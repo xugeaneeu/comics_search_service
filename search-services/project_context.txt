@@ -1,0 +1,4411 @@
+Project Structure:
+./
+    Dockerfile.search
+    go.sum
+    Makefile
+    go.mod
+    Dockerfile.api
+    Dockerfile.update
+    Dockerfile.words
+    closers/
+        closer.go
+    proto/
+        words/
+            words.proto
+            words.pb.go
+            words_grpc.pb.go
+        update/
+            update_grpc.pb.go
+            update.pb.go
+            update.proto
+        search/
+            search.pb.go
+            search_grpc.pb.go
+            search.proto
+    api/
+        main.go
+        adapters/
+            words/
+                words.go
+            update/
+                update.go
+            rest/
+                api.go
+                middleware/
+                    concurrency.go
+                    auth.go
+                    rate.go
+            search/
+                search.go
+            aaa/
+                auth.go
+        core/
+            errors.go
+            models.go
+            ports.go
+        config/
+            config.go
+    words/
+        main.go
+        words/
+            words.go
+    update/
+        main.go
+        adapters/
+            db/
+                storage.go
+                migrations.go
+                migrations/
+                    000001_create_comics.up.sql
+                    000001_create_comics.down.sql
+            events/
+                events.go
+            words/
+                words.go
+            xkcd/
+                xkcd.go
+            grpc/
+                server.go
+        core/
+            errors.go
+            models.go
+            ports.go
+            service.go
+        config/
+            config.go
+    search/
+        main.go
+        adapters/
+            db/
+                storage.go
+            events/
+                events.go
+            words/
+                words.go
+            grpc/
+                server.go
+            initiator/
+                index_updater.go
+        core/
+            errors.go
+            models.go
+            ports.go
+            service.go
+        config/
+            config.go
+
+==================================================
+
+FILE: Dockerfile.search
+--------------------
+```
+FROM golang:1.25 AS build
+
+RUN apt update && apt install -y protobuf-compiler
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+ENV PATH="$PATH:$(go env GOPATH)/bin"
+
+COPY go.mod go.sum /src/
+COPY proto /src/proto
+COPY search /src/search
+COPY closers /src/closers
+
+RUN cd /src && \
+    protoc --go_out=.      --go_opt=paths=source_relative \
+    --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+    proto/search/search.proto
+
+
+ENV CGO_ENABLED=0
+RUN cd /src && go build -o /search search/main.go
+
+FROM alpine:3.20
+
+COPY --from=build /search /search
+
+ENTRYPOINT [ "/search" ]
+```
+==================================================
+
+
+FILE: Makefile
+--------------------
+```
+lint: protolint golint
+
+protobuf:
+	protoc --go_out=. --go_opt=paths=source_relative \
+               --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+               proto/words/words.proto
+	protoc --go_out=. --go_opt=paths=source_relative \
+               --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+               proto/update/update.proto
+	protoc --go_out=. --go_opt=paths=source_relative \
+               --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+               proto/search/search.proto
+
+protolint:
+	protolint .
+
+golint:
+	golangci-lint run -E gocritic -v ./...
+```
+==================================================
+
+FILE: go.mod
+--------------------
+```
+module yadro.com/course
+
+go 1.25.1
+
+require (
+	github.com/lib/pq v1.10.9
+	google.golang.org/grpc v1.69.2
+	google.golang.org/protobuf v1.35.1
+)
+
+require (
+	github.com/BurntSushi/toml v1.2.1 // indirect
+	github.com/hashicorp/errwrap v1.1.0 // indirect
+	github.com/hashicorp/go-multierror v1.1.1 // indirect
+	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
+	github.com/jackc/pgconn v1.14.3 // indirect
+	github.com/jackc/pgerrcode v0.0.0-20220416144525-469b46aa5efa // indirect
+	github.com/jackc/pgio v1.0.0 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgproto3/v2 v2.3.3 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/pgtype v1.14.0 // indirect
+	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/joho/godotenv v1.5.1 // indirect
+	github.com/klauspost/compress v1.18.0 // indirect
+	github.com/nats-io/nkeys v0.4.11 // indirect
+	github.com/nats-io/nuid v1.0.1 // indirect
+	go.uber.org/atomic v1.7.0 // indirect
+	golang.org/x/crypto v0.37.0 // indirect
+	golang.org/x/sync v0.13.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
+	olympos.io/encoding/edn v0.0.0-20201019073823-d3554ca0b0a3 // indirect
+)
+
+require (
+	github.com/golang-jwt/jwt/v5 v5.2.1
+	github.com/golang-migrate/migrate/v4 v4.18.1
+	github.com/ilyakaznacheev/cleanenv v1.5.0
+	github.com/jackc/pgx/v4 v4.18.3 // indirect
+	github.com/jackc/pgx/v5 v5.7.2
+	github.com/jmoiron/sqlx v1.4.0
+	github.com/kljensen/snowball v0.10.0
+	github.com/nats-io/nats.go v1.43.0
+	golang.org/x/net v0.30.0 // indirect
+	golang.org/x/sys v0.32.0 // indirect
+	golang.org/x/text v0.24.0 // indirect
+	golang.org/x/time v0.10.0
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20241015192408-796eee8c2d53 // indirect
+)
+```
+==================================================
+
+FILE: Dockerfile.api
+--------------------
+```
+FROM golang:1.25 AS build
+
+RUN apt update && apt install -y protobuf-compiler
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+ENV PATH="$PATH:$(go env GOPATH)/bin"
+
+COPY go.mod go.sum /src/
+COPY proto /src/proto
+COPY api /src/api
+COPY closers /src/closers
+
+RUN cd /src && \
+    protoc --go_out=.      --go_opt=paths=source_relative \
+    --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+    proto/words/words.proto
+
+
+ENV CGO_ENABLED=0
+RUN cd /src && go build -o /api api/main.go
+
+FROM alpine:3.20
+
+COPY --from=build /api /api
+
+ENTRYPOINT [ "/api" ]
+```
+==================================================
+
+FILE: Dockerfile.update
+--------------------
+```
+FROM golang:1.25 AS build
+
+RUN apt update && apt install -y protobuf-compiler
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+ENV PATH="$PATH:$(go env GOPATH)/bin"
+
+COPY go.mod go.sum /src/
+COPY proto /src/proto
+COPY update /src/update
+COPY closers /src/closers
+
+RUN cd /src && \
+    protoc --go_out=.      --go_opt=paths=source_relative \
+    --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+    proto/update/update.proto
+
+
+ENV CGO_ENABLED=0
+RUN cd /src && go build -o /update update/main.go
+
+FROM alpine:3.20
+
+COPY --from=build /update /update
+
+ENTRYPOINT [ "/update" ]
+```
+==================================================
+
+
+FILE: Dockerfile.words
+--------------------
+```
+FROM golang:1.25 AS build
+
+RUN apt update && apt install -y protobuf-compiler
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+ENV PATH="$PATH:$(go env GOPATH)/bin"
+
+COPY go.mod go.sum /src/
+COPY proto /src/proto
+COPY words /src/words
+
+RUN cd /src && \
+    protoc --go_out=.      --go_opt=paths=source_relative \
+    --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+    proto/words/words.proto
+
+
+ENV CGO_ENABLED=0
+RUN cd /src && go build -o /words words/main.go
+
+FROM alpine:3.20
+
+COPY --from=build /words /words
+
+ENTRYPOINT [ "/words" ]
+```
+==================================================
+
+FILE: closers/closer.go
+--------------------
+```
+package closers
+
+import (
+	"io"
+	"log/slog"
+)
+
+func CloseOrLog(c io.Closer, l *slog.Logger) {
+	if err := c.Close(); err != nil {
+		l.Error("close failed", "error", err)
+	}
+}
+
+func CloseOrPanic(c io.Closer) {
+	if err := c.Close(); err != nil {
+		panic(err)
+	}
+}
+```
+==================================================
+
+FILE: proto/words/words.proto
+--------------------
+```
+syntax = "proto3";
+
+package words;
+
+import "google/protobuf/empty.proto";
+
+option go_package = "yadro.com/course/proto/words";
+
+message WordsRequest {
+  string phrase = 1;
+}
+
+message WordsReply {
+  repeated string words = 1;
+}
+
+// Service
+service Words {
+  rpc Ping(google.protobuf.Empty) returns (google.protobuf.Empty) {}
+
+  // Send name, receive greeting
+  rpc Norm(WordsRequest) returns (WordsReply) {}
+}
+```
+==================================================
+
+FILE: proto/words/words.pb.go
+--------------------
+```
+// Code generated by protoc-gen-go. DO NOT EDIT.
+// versions:
+// 	protoc-gen-go v1.36.6
+// 	protoc        v3.21.12
+// source: proto/words/words.proto
+
+package words
+
+import (
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	reflect "reflect"
+	sync "sync"
+	unsafe "unsafe"
+)
+
+const (
+	// Verify that this generated code is sufficiently up-to-date.
+	_ = protoimpl.EnforceVersion(20 - protoimpl.MinVersion)
+	// Verify that runtime/protoimpl is sufficiently up-to-date.
+	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
+)
+
+type WordsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Phrase        string                 `protobuf:"bytes,1,opt,name=phrase,proto3" json:"phrase,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WordsRequest) Reset() {
+	*x = WordsRequest{}
+	mi := &file_proto_words_words_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WordsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WordsRequest) ProtoMessage() {}
+
+func (x *WordsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_words_words_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WordsRequest.ProtoReflect.Descriptor instead.
+func (*WordsRequest) Descriptor() ([]byte, []int) {
+	return file_proto_words_words_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *WordsRequest) GetPhrase() string {
+	if x != nil {
+		return x.Phrase
+	}
+	return ""
+}
+
+type WordsReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Words         []string               `protobuf:"bytes,1,rep,name=words,proto3" json:"words,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WordsReply) Reset() {
+	*x = WordsReply{}
+	mi := &file_proto_words_words_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WordsReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WordsReply) ProtoMessage() {}
+
+func (x *WordsReply) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_words_words_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WordsReply.ProtoReflect.Descriptor instead.
+func (*WordsReply) Descriptor() ([]byte, []int) {
+	return file_proto_words_words_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *WordsReply) GetWords() []string {
+	if x != nil {
+		return x.Words
+	}
+	return nil
+}
+
+var File_proto_words_words_proto protoreflect.FileDescriptor
+
+const file_proto_words_words_proto_rawDesc = "" +
+	"\n" +
+	"\x17proto/words/words.proto\x12\x05words\x1a\x1bgoogle/protobuf/empty.proto\"&\n" +
+	"\fWordsRequest\x12\x16\n" +
+	"\x06phrase\x18\x01 \x01(\tR\x06phrase\"\"\n" +
+	"\n" +
+	"WordsReply\x12\x14\n" +
+	"\x05words\x18\x01 \x03(\tR\x05words2s\n" +
+	"\x05Words\x128\n" +
+	"\x04Ping\x12\x16.google.protobuf.Empty\x1a\x16.google.protobuf.Empty\"\x00\x120\n" +
+	"\x04Norm\x12\x13.words.WordsRequest\x1a\x11.words.WordsReply\"\x00B\x1eZ\x1cyadro.com/course/proto/wordsb\x06proto3"
+
+var (
+	file_proto_words_words_proto_rawDescOnce sync.Once
+	file_proto_words_words_proto_rawDescData []byte
+)
+
+func file_proto_words_words_proto_rawDescGZIP() []byte {
+	file_proto_words_words_proto_rawDescOnce.Do(func() {
+		file_proto_words_words_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_words_words_proto_rawDesc), len(file_proto_words_words_proto_rawDesc)))
+	})
+	return file_proto_words_words_proto_rawDescData
+}
+
+var file_proto_words_words_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_proto_words_words_proto_goTypes = []any{
+	(*WordsRequest)(nil),  // 0: words.WordsRequest
+	(*WordsReply)(nil),    // 1: words.WordsReply
+	(*emptypb.Empty)(nil), // 2: google.protobuf.Empty
+}
+var file_proto_words_words_proto_depIdxs = []int32{
+	2, // 0: words.Words.Ping:input_type -> google.protobuf.Empty
+	0, // 1: words.Words.Norm:input_type -> words.WordsRequest
+	2, // 2: words.Words.Ping:output_type -> google.protobuf.Empty
+	1, // 3: words.Words.Norm:output_type -> words.WordsReply
+	2, // [2:4] is the sub-list for method output_type
+	0, // [0:2] is the sub-list for method input_type
+	0, // [0:0] is the sub-list for extension type_name
+	0, // [0:0] is the sub-list for extension extendee
+	0, // [0:0] is the sub-list for field type_name
+}
+
+func init() { file_proto_words_words_proto_init() }
+func file_proto_words_words_proto_init() {
+	if File_proto_words_words_proto != nil {
+		return
+	}
+	type x struct{}
+	out := protoimpl.TypeBuilder{
+		File: protoimpl.DescBuilder{
+			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_words_words_proto_rawDesc), len(file_proto_words_words_proto_rawDesc)),
+			NumEnums:      0,
+			NumMessages:   2,
+			NumExtensions: 0,
+			NumServices:   1,
+		},
+		GoTypes:           file_proto_words_words_proto_goTypes,
+		DependencyIndexes: file_proto_words_words_proto_depIdxs,
+		MessageInfos:      file_proto_words_words_proto_msgTypes,
+	}.Build()
+	File_proto_words_words_proto = out.File
+	file_proto_words_words_proto_goTypes = nil
+	file_proto_words_words_proto_depIdxs = nil
+}
+```
+==================================================
+
+FILE: proto/words/words_grpc.pb.go
+--------------------
+```
+// Code generated by protoc-gen-go-grpc. DO NOT EDIT.
+// versions:
+// - protoc-gen-go-grpc v1.5.1
+// - protoc             v3.21.12
+// source: proto/words/words.proto
+
+package words
+
+import (
+	context "context"
+	grpc "google.golang.org/grpc"
+	codes "google.golang.org/grpc/codes"
+	status "google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
+)
+
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the grpc package it is being compiled against.
+// Requires gRPC-Go v1.64.0 or later.
+const _ = grpc.SupportPackageIsVersion9
+
+const (
+	Words_Ping_FullMethodName = "/words.Words/Ping"
+	Words_Norm_FullMethodName = "/words.Words/Norm"
+)
+
+// WordsClient is the client API for Words service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// Service
+type WordsClient interface {
+	Ping(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// Send name, receive greeting
+	Norm(ctx context.Context, in *WordsRequest, opts ...grpc.CallOption) (*WordsReply, error)
+}
+
+type wordsClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewWordsClient(cc grpc.ClientConnInterface) WordsClient {
+	return &wordsClient{cc}
+}
+
+func (c *wordsClient) Ping(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, Words_Ping_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *wordsClient) Norm(ctx context.Context, in *WordsRequest, opts ...grpc.CallOption) (*WordsReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WordsReply)
+	err := c.cc.Invoke(ctx, Words_Norm_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// WordsServer is the server API for Words service.
+// All implementations must embed UnimplementedWordsServer
+// for forward compatibility.
+//
+// Service
+type WordsServer interface {
+	Ping(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
+	// Send name, receive greeting
+	Norm(context.Context, *WordsRequest) (*WordsReply, error)
+	mustEmbedUnimplementedWordsServer()
+}
+
+// UnimplementedWordsServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedWordsServer struct{}
+
+func (UnimplementedWordsServer) Ping(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Ping not implemented")
+}
+func (UnimplementedWordsServer) Norm(context.Context, *WordsRequest) (*WordsReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Norm not implemented")
+}
+func (UnimplementedWordsServer) mustEmbedUnimplementedWordsServer() {}
+func (UnimplementedWordsServer) testEmbeddedByValue()               {}
+
+// UnsafeWordsServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to WordsServer will
+// result in compilation errors.
+type UnsafeWordsServer interface {
+	mustEmbedUnimplementedWordsServer()
+}
+
+func RegisterWordsServer(s grpc.ServiceRegistrar, srv WordsServer) {
+	// If the following call pancis, it indicates UnimplementedWordsServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&Words_ServiceDesc, srv)
+}
+
+func _Words_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WordsServer).Ping(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Words_Ping_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WordsServer).Ping(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Words_Norm_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WordsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WordsServer).Norm(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Words_Norm_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WordsServer).Norm(ctx, req.(*WordsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// Words_ServiceDesc is the grpc.ServiceDesc for Words service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var Words_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "words.Words",
+	HandlerType: (*WordsServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Ping",
+			Handler:    _Words_Ping_Handler,
+		},
+		{
+			MethodName: "Norm",
+			Handler:    _Words_Norm_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "proto/words/words.proto",
+}
+```
+==================================================
+
+FILE: proto/update/update_grpc.pb.go
+--------------------
+```
+// Code generated by protoc-gen-go-grpc. DO NOT EDIT.
+// versions:
+// - protoc-gen-go-grpc v1.5.1
+// - protoc             v3.21.12
+// source: proto/update/update.proto
+
+package update
+
+import (
+	context "context"
+	grpc "google.golang.org/grpc"
+	codes "google.golang.org/grpc/codes"
+	status "google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
+)
+
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the grpc package it is being compiled against.
+// Requires gRPC-Go v1.64.0 or later.
+const _ = grpc.SupportPackageIsVersion9
+
+const (
+	Update_Ping_FullMethodName   = "/update.Update/Ping"
+	Update_Status_FullMethodName = "/update.Update/Status"
+	Update_Update_FullMethodName = "/update.Update/Update"
+	Update_Stats_FullMethodName  = "/update.Update/Stats"
+	Update_Drop_FullMethodName   = "/update.Update/Drop"
+)
+
+// UpdateClient is the client API for Update service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type UpdateClient interface {
+	Ping(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	Status(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*StatusReply, error)
+	Update(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	Stats(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*StatsReply, error)
+	Drop(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
+}
+
+type updateClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewUpdateClient(cc grpc.ClientConnInterface) UpdateClient {
+	return &updateClient{cc}
+}
+
+func (c *updateClient) Ping(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, Update_Ping_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *updateClient) Status(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*StatusReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatusReply)
+	err := c.cc.Invoke(ctx, Update_Status_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *updateClient) Update(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, Update_Update_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *updateClient) Stats(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*StatsReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatsReply)
+	err := c.cc.Invoke(ctx, Update_Stats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *updateClient) Drop(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, Update_Drop_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// UpdateServer is the server API for Update service.
+// All implementations must embed UnimplementedUpdateServer
+// for forward compatibility.
+type UpdateServer interface {
+	Ping(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
+	Status(context.Context, *emptypb.Empty) (*StatusReply, error)
+	Update(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
+	Stats(context.Context, *emptypb.Empty) (*StatsReply, error)
+	Drop(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
+	mustEmbedUnimplementedUpdateServer()
+}
+
+// UnimplementedUpdateServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedUpdateServer struct{}
+
+func (UnimplementedUpdateServer) Ping(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Ping not implemented")
+}
+func (UnimplementedUpdateServer) Status(context.Context, *emptypb.Empty) (*StatusReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Status not implemented")
+}
+func (UnimplementedUpdateServer) Update(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Update not implemented")
+}
+func (UnimplementedUpdateServer) Stats(context.Context, *emptypb.Empty) (*StatsReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Stats not implemented")
+}
+func (UnimplementedUpdateServer) Drop(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Drop not implemented")
+}
+func (UnimplementedUpdateServer) mustEmbedUnimplementedUpdateServer() {}
+func (UnimplementedUpdateServer) testEmbeddedByValue()                {}
+
+// UnsafeUpdateServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to UpdateServer will
+// result in compilation errors.
+type UnsafeUpdateServer interface {
+	mustEmbedUnimplementedUpdateServer()
+}
+
+func RegisterUpdateServer(s grpc.ServiceRegistrar, srv UpdateServer) {
+	// If the following call pancis, it indicates UnimplementedUpdateServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&Update_ServiceDesc, srv)
+}
+
+func _Update_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UpdateServer).Ping(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Update_Ping_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UpdateServer).Ping(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Update_Status_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UpdateServer).Status(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Update_Status_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UpdateServer).Status(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Update_Update_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UpdateServer).Update(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Update_Update_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UpdateServer).Update(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Update_Stats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UpdateServer).Stats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Update_Stats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UpdateServer).Stats(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Update_Drop_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UpdateServer).Drop(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Update_Drop_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UpdateServer).Drop(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// Update_ServiceDesc is the grpc.ServiceDesc for Update service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var Update_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "update.Update",
+	HandlerType: (*UpdateServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Ping",
+			Handler:    _Update_Ping_Handler,
+		},
+		{
+			MethodName: "Status",
+			Handler:    _Update_Status_Handler,
+		},
+		{
+			MethodName: "Update",
+			Handler:    _Update_Update_Handler,
+		},
+		{
+			MethodName: "Stats",
+			Handler:    _Update_Stats_Handler,
+		},
+		{
+			MethodName: "Drop",
+			Handler:    _Update_Drop_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "proto/update/update.proto",
+}
+```
+==================================================
+
+FILE: proto/update/update.pb.go
+--------------------
+```
+// Code generated by protoc-gen-go. DO NOT EDIT.
+// versions:
+// 	protoc-gen-go v1.36.6
+// 	protoc        v3.21.12
+// source: proto/update/update.proto
+
+package update
+
+import (
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	reflect "reflect"
+	sync "sync"
+	unsafe "unsafe"
+)
+
+const (
+	// Verify that this generated code is sufficiently up-to-date.
+	_ = protoimpl.EnforceVersion(20 - protoimpl.MinVersion)
+	// Verify that runtime/protoimpl is sufficiently up-to-date.
+	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
+)
+
+type Status int32
+
+const (
+	Status_STATUS_UNSPECIFIED Status = 0
+	Status_STATUS_IDLE        Status = 1
+	Status_STATUS_RUNNING     Status = 2
+)
+
+// Enum value maps for Status.
+var (
+	Status_name = map[int32]string{
+		0: "STATUS_UNSPECIFIED",
+		1: "STATUS_IDLE",
+		2: "STATUS_RUNNING",
+	}
+	Status_value = map[string]int32{
+		"STATUS_UNSPECIFIED": 0,
+		"STATUS_IDLE":        1,
+		"STATUS_RUNNING":     2,
+	}
+)
+
+func (x Status) Enum() *Status {
+	p := new(Status)
+	*p = x
+	return p
+}
+
+func (x Status) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Status) Descriptor() protoreflect.EnumDescriptor {
+	return file_proto_update_update_proto_enumTypes[0].Descriptor()
+}
+
+func (Status) Type() protoreflect.EnumType {
+	return &file_proto_update_update_proto_enumTypes[0]
+}
+
+func (x Status) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Status.Descriptor instead.
+func (Status) EnumDescriptor() ([]byte, []int) {
+	return file_proto_update_update_proto_rawDescGZIP(), []int{0}
+}
+
+type StatsReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WordsTotal    int64                  `protobuf:"varint,1,opt,name=words_total,json=wordsTotal,proto3" json:"words_total,omitempty"`
+	WordsUnique   int64                  `protobuf:"varint,2,opt,name=words_unique,json=wordsUnique,proto3" json:"words_unique,omitempty"`
+	ComicsTotal   int64                  `protobuf:"varint,3,opt,name=comics_total,json=comicsTotal,proto3" json:"comics_total,omitempty"`
+	ComicsFetched int64                  `protobuf:"varint,4,opt,name=comics_fetched,json=comicsFetched,proto3" json:"comics_fetched,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StatsReply) Reset() {
+	*x = StatsReply{}
+	mi := &file_proto_update_update_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StatsReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StatsReply) ProtoMessage() {}
+
+func (x *StatsReply) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_update_update_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StatsReply.ProtoReflect.Descriptor instead.
+func (*StatsReply) Descriptor() ([]byte, []int) {
+	return file_proto_update_update_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *StatsReply) GetWordsTotal() int64 {
+	if x != nil {
+		return x.WordsTotal
+	}
+	return 0
+}
+
+func (x *StatsReply) GetWordsUnique() int64 {
+	if x != nil {
+		return x.WordsUnique
+	}
+	return 0
+}
+
+func (x *StatsReply) GetComicsTotal() int64 {
+	if x != nil {
+		return x.ComicsTotal
+	}
+	return 0
+}
+
+func (x *StatsReply) GetComicsFetched() int64 {
+	if x != nil {
+		return x.ComicsFetched
+	}
+	return 0
+}
+
+type StatusReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Status        Status                 `protobuf:"varint,1,opt,name=status,proto3,enum=update.Status" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StatusReply) Reset() {
+	*x = StatusReply{}
+	mi := &file_proto_update_update_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StatusReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StatusReply) ProtoMessage() {}
+
+func (x *StatusReply) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_update_update_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StatusReply.ProtoReflect.Descriptor instead.
+func (*StatusReply) Descriptor() ([]byte, []int) {
+	return file_proto_update_update_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *StatusReply) GetStatus() Status {
+	if x != nil {
+		return x.Status
+	}
+	return Status_STATUS_UNSPECIFIED
+}
+
+var File_proto_update_update_proto protoreflect.FileDescriptor
+
+const file_proto_update_update_proto_rawDesc = "" +
+	"\n" +
+	"\x19proto/update/update.proto\x12\x06update\x1a\x1bgoogle/protobuf/empty.proto\"\x9a\x01\n" +
+	"\n" +
+	"StatsReply\x12\x1f\n" +
+	"\vwords_total\x18\x01 \x01(\x03R\n" +
+	"wordsTotal\x12!\n" +
+	"\fwords_unique\x18\x02 \x01(\x03R\vwordsUnique\x12!\n" +
+	"\fcomics_total\x18\x03 \x01(\x03R\vcomicsTotal\x12%\n" +
+	"\x0ecomics_fetched\x18\x04 \x01(\x03R\rcomicsFetched\"5\n" +
+	"\vStatusReply\x12&\n" +
+	"\x06status\x18\x01 \x01(\x0e2\x0e.update.StatusR\x06status*E\n" +
+	"\x06Status\x12\x16\n" +
+	"\x12STATUS_UNSPECIFIED\x10\x00\x12\x0f\n" +
+	"\vSTATUS_IDLE\x10\x01\x12\x12\n" +
+	"\x0eSTATUS_RUNNING\x10\x022\xa8\x02\n" +
+	"\x06Update\x128\n" +
+	"\x04Ping\x12\x16.google.protobuf.Empty\x1a\x16.google.protobuf.Empty\"\x00\x127\n" +
+	"\x06Status\x12\x16.google.protobuf.Empty\x1a\x13.update.StatusReply\"\x00\x12:\n" +
+	"\x06Update\x12\x16.google.protobuf.Empty\x1a\x16.google.protobuf.Empty\"\x00\x125\n" +
+	"\x05Stats\x12\x16.google.protobuf.Empty\x1a\x12.update.StatsReply\"\x00\x128\n" +
+	"\x04Drop\x12\x16.google.protobuf.Empty\x1a\x16.google.protobuf.Empty\"\x00B\x1fZ\x1dyadro.com/course/proto/updateb\x06proto3"
+
+var (
+	file_proto_update_update_proto_rawDescOnce sync.Once
+	file_proto_update_update_proto_rawDescData []byte
+)
+
+func file_proto_update_update_proto_rawDescGZIP() []byte {
+	file_proto_update_update_proto_rawDescOnce.Do(func() {
+		file_proto_update_update_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_update_update_proto_rawDesc), len(file_proto_update_update_proto_rawDesc)))
+	})
+	return file_proto_update_update_proto_rawDescData
+}
+
+var file_proto_update_update_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_proto_update_update_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_proto_update_update_proto_goTypes = []any{
+	(Status)(0),           // 0: update.Status
+	(*StatsReply)(nil),    // 1: update.StatsReply
+	(*StatusReply)(nil),   // 2: update.StatusReply
+	(*emptypb.Empty)(nil), // 3: google.protobuf.Empty
+}
+var file_proto_update_update_proto_depIdxs = []int32{
+	0, // 0: update.StatusReply.status:type_name -> update.Status
+	3, // 1: update.Update.Ping:input_type -> google.protobuf.Empty
+	3, // 2: update.Update.Status:input_type -> google.protobuf.Empty
+	3, // 3: update.Update.Update:input_type -> google.protobuf.Empty
+	3, // 4: update.Update.Stats:input_type -> google.protobuf.Empty
+	3, // 5: update.Update.Drop:input_type -> google.protobuf.Empty
+	3, // 6: update.Update.Ping:output_type -> google.protobuf.Empty
+	2, // 7: update.Update.Status:output_type -> update.StatusReply
+	3, // 8: update.Update.Update:output_type -> google.protobuf.Empty
+	1, // 9: update.Update.Stats:output_type -> update.StatsReply
+	3, // 10: update.Update.Drop:output_type -> google.protobuf.Empty
+	6, // [6:11] is the sub-list for method output_type
+	1, // [1:6] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
+}
+
+func init() { file_proto_update_update_proto_init() }
+func file_proto_update_update_proto_init() {
+	if File_proto_update_update_proto != nil {
+		return
+	}
+	type x struct{}
+	out := protoimpl.TypeBuilder{
+		File: protoimpl.DescBuilder{
+			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_update_update_proto_rawDesc), len(file_proto_update_update_proto_rawDesc)),
+			NumEnums:      1,
+			NumMessages:   2,
+			NumExtensions: 0,
+			NumServices:   1,
+		},
+		GoTypes:           file_proto_update_update_proto_goTypes,
+		DependencyIndexes: file_proto_update_update_proto_depIdxs,
+		EnumInfos:         file_proto_update_update_proto_enumTypes,
+		MessageInfos:      file_proto_update_update_proto_msgTypes,
+	}.Build()
+	File_proto_update_update_proto = out.File
+	file_proto_update_update_proto_goTypes = nil
+	file_proto_update_update_proto_depIdxs = nil
+}
+```
+==================================================
+
+FILE: proto/update/update.proto
+--------------------
+```
+syntax = "proto3";
+
+package update;
+
+import "google/protobuf/empty.proto";
+
+option go_package = "yadro.com/course/proto/update";
+
+message StatsReply {
+  int64 words_total = 1;
+  int64 words_unique = 2;
+  int64 comics_total = 3;
+  int64 comics_fetched = 4;
+}
+
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  STATUS_IDLE = 1;
+  STATUS_RUNNING = 2;
+}
+
+message StatusReply {
+  Status status = 1;
+}
+
+service Update {
+  rpc Ping(google.protobuf.Empty) returns (google.protobuf.Empty) {}
+
+  rpc Status(google.protobuf.Empty) returns (StatusReply) {}
+
+  rpc Update(google.protobuf.Empty) returns (google.protobuf.Empty) {}
+
+  rpc Stats(google.protobuf.Empty) returns (StatsReply) {}
+
+  rpc Drop(google.protobuf.Empty) returns (google.protobuf.Empty) {}
+}
+```
+==================================================
+
+FILE: proto/search/search.pb.go
+--------------------
+```
+// Code generated by protoc-gen-go. DO NOT EDIT.
+// versions:
+// 	protoc-gen-go v1.36.6
+// 	protoc        v3.21.12
+// source: proto/search/search.proto
+
+package search
+
+import (
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	reflect "reflect"
+	sync "sync"
+	unsafe "unsafe"
+)
+
+const (
+	// Verify that this generated code is sufficiently up-to-date.
+	_ = protoimpl.EnforceVersion(20 - protoimpl.MinVersion)
+	// Verify that runtime/protoimpl is sufficiently up-to-date.
+	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
+)
+
+type SearchRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Phrase        string                 `protobuf:"bytes,1,opt,name=phrase,proto3" json:"phrase,omitempty"`
+	Limit         int64                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SearchRequest) Reset() {
+	*x = SearchRequest{}
+	mi := &file_proto_search_search_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SearchRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SearchRequest) ProtoMessage() {}
+
+func (x *SearchRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_search_search_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SearchRequest.ProtoReflect.Descriptor instead.
+func (*SearchRequest) Descriptor() ([]byte, []int) {
+	return file_proto_search_search_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *SearchRequest) GetPhrase() string {
+	if x != nil {
+		return x.Phrase
+	}
+	return ""
+}
+
+func (x *SearchRequest) GetLimit() int64 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type Comics struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Url           string                 `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`
+	Score         int64                  `protobuf:"varint,3,opt,name=score,proto3" json:"score,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Comics) Reset() {
+	*x = Comics{}
+	mi := &file_proto_search_search_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Comics) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Comics) ProtoMessage() {}
+
+func (x *Comics) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_search_search_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Comics.ProtoReflect.Descriptor instead.
+func (*Comics) Descriptor() ([]byte, []int) {
+	return file_proto_search_search_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *Comics) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *Comics) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *Comics) GetScore() int64 {
+	if x != nil {
+		return x.Score
+	}
+	return 0
+}
+
+type SearchReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Comics        []*Comics              `protobuf:"bytes,1,rep,name=comics,proto3" json:"comics,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SearchReply) Reset() {
+	*x = SearchReply{}
+	mi := &file_proto_search_search_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SearchReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SearchReply) ProtoMessage() {}
+
+func (x *SearchReply) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_search_search_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SearchReply.ProtoReflect.Descriptor instead.
+func (*SearchReply) Descriptor() ([]byte, []int) {
+	return file_proto_search_search_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *SearchReply) GetComics() []*Comics {
+	if x != nil {
+		return x.Comics
+	}
+	return nil
+}
+
+var File_proto_search_search_proto protoreflect.FileDescriptor
+
+const file_proto_search_search_proto_rawDesc = "" +
+	"\n" +
+	"\x19proto/search/search.proto\x12\x06search\x1a\x1bgoogle/protobuf/empty.proto\"=\n" +
+	"\rSearchRequest\x12\x16\n" +
+	"\x06phrase\x18\x01 \x01(\tR\x06phrase\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\x03R\x05limit\"@\n" +
+	"\x06Comics\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x10\n" +
+	"\x03url\x18\x02 \x01(\tR\x03url\x12\x14\n" +
+	"\x05score\x18\x03 \x01(\x03R\x05score\"5\n" +
+	"\vSearchReply\x12&\n" +
+	"\x06comics\x18\x01 \x03(\v2\x0e.search.ComicsR\x06comics2\xb7\x01\n" +
+	"\x06Search\x128\n" +
+	"\x04Ping\x12\x16.google.protobuf.Empty\x1a\x16.google.protobuf.Empty\"\x00\x126\n" +
+	"\x06Search\x12\x15.search.SearchRequest\x1a\x13.search.SearchReply\"\x00\x12;\n" +
+	"\vSearchIndex\x12\x15.search.SearchRequest\x1a\x13.search.SearchReply\"\x00B\x1fZ\x1dyadro.com/course/proto/searchb\x06proto3"
+
+var (
+	file_proto_search_search_proto_rawDescOnce sync.Once
+	file_proto_search_search_proto_rawDescData []byte
+)
+
+func file_proto_search_search_proto_rawDescGZIP() []byte {
+	file_proto_search_search_proto_rawDescOnce.Do(func() {
+		file_proto_search_search_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_search_search_proto_rawDesc), len(file_proto_search_search_proto_rawDesc)))
+	})
+	return file_proto_search_search_proto_rawDescData
+}
+
+var file_proto_search_search_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_proto_search_search_proto_goTypes = []any{
+	(*SearchRequest)(nil), // 0: search.SearchRequest
+	(*Comics)(nil),        // 1: search.Comics
+	(*SearchReply)(nil),   // 2: search.SearchReply
+	(*emptypb.Empty)(nil), // 3: google.protobuf.Empty
+}
+var file_proto_search_search_proto_depIdxs = []int32{
+	1, // 0: search.SearchReply.comics:type_name -> search.Comics
+	3, // 1: search.Search.Ping:input_type -> google.protobuf.Empty
+	0, // 2: search.Search.Search:input_type -> search.SearchRequest
+	0, // 3: search.Search.SearchIndex:input_type -> search.SearchRequest
+	3, // 4: search.Search.Ping:output_type -> google.protobuf.Empty
+	2, // 5: search.Search.Search:output_type -> search.SearchReply
+	2, // 6: search.Search.SearchIndex:output_type -> search.SearchReply
+	4, // [4:7] is the sub-list for method output_type
+	1, // [1:4] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
+}
+
+func init() { file_proto_search_search_proto_init() }
+func file_proto_search_search_proto_init() {
+	if File_proto_search_search_proto != nil {
+		return
+	}
+	type x struct{}
+	out := protoimpl.TypeBuilder{
+		File: protoimpl.DescBuilder{
+			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_search_search_proto_rawDesc), len(file_proto_search_search_proto_rawDesc)),
+			NumEnums:      0,
+			NumMessages:   3,
+			NumExtensions: 0,
+			NumServices:   1,
+		},
+		GoTypes:           file_proto_search_search_proto_goTypes,
+		DependencyIndexes: file_proto_search_search_proto_depIdxs,
+		MessageInfos:      file_proto_search_search_proto_msgTypes,
+	}.Build()
+	File_proto_search_search_proto = out.File
+	file_proto_search_search_proto_goTypes = nil
+	file_proto_search_search_proto_depIdxs = nil
+}
+```
+==================================================
+
+FILE: proto/search/search_grpc.pb.go
+--------------------
+```
+// Code generated by protoc-gen-go-grpc. DO NOT EDIT.
+// versions:
+// - protoc-gen-go-grpc v1.5.1
+// - protoc             v3.21.12
+// source: proto/search/search.proto
+
+package search
+
+import (
+	context "context"
+	grpc "google.golang.org/grpc"
+	codes "google.golang.org/grpc/codes"
+	status "google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
+)
+
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the grpc package it is being compiled against.
+// Requires gRPC-Go v1.64.0 or later.
+const _ = grpc.SupportPackageIsVersion9
+
+const (
+	Search_Ping_FullMethodName        = "/search.Search/Ping"
+	Search_Search_FullMethodName      = "/search.Search/Search"
+	Search_SearchIndex_FullMethodName = "/search.Search/SearchIndex"
+)
+
+// SearchClient is the client API for Search service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type SearchClient interface {
+	Ping(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	Search(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchReply, error)
+	SearchIndex(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchReply, error)
+}
+
+type searchClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewSearchClient(cc grpc.ClientConnInterface) SearchClient {
+	return &searchClient{cc}
+}
+
+func (c *searchClient) Ping(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, Search_Ping_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *searchClient) Search(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SearchReply)
+	err := c.cc.Invoke(ctx, Search_Search_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *searchClient) SearchIndex(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SearchReply)
+	err := c.cc.Invoke(ctx, Search_SearchIndex_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// SearchServer is the server API for Search service.
+// All implementations must embed UnimplementedSearchServer
+// for forward compatibility.
+type SearchServer interface {
+	Ping(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
+	Search(context.Context, *SearchRequest) (*SearchReply, error)
+	SearchIndex(context.Context, *SearchRequest) (*SearchReply, error)
+	mustEmbedUnimplementedSearchServer()
+}
+
+// UnimplementedSearchServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedSearchServer struct{}
+
+func (UnimplementedSearchServer) Ping(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Ping not implemented")
+}
+func (UnimplementedSearchServer) Search(context.Context, *SearchRequest) (*SearchReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Search not implemented")
+}
+func (UnimplementedSearchServer) SearchIndex(context.Context, *SearchRequest) (*SearchReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SearchIndex not implemented")
+}
+func (UnimplementedSearchServer) mustEmbedUnimplementedSearchServer() {}
+func (UnimplementedSearchServer) testEmbeddedByValue()                {}
+
+// UnsafeSearchServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to SearchServer will
+// result in compilation errors.
+type UnsafeSearchServer interface {
+	mustEmbedUnimplementedSearchServer()
+}
+
+func RegisterSearchServer(s grpc.ServiceRegistrar, srv SearchServer) {
+	// If the following call pancis, it indicates UnimplementedSearchServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&Search_ServiceDesc, srv)
+}
+
+func _Search_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SearchServer).Ping(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Search_Ping_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SearchServer).Ping(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Search_Search_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SearchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SearchServer).Search(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Search_Search_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SearchServer).Search(ctx, req.(*SearchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Search_SearchIndex_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SearchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SearchServer).SearchIndex(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Search_SearchIndex_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SearchServer).SearchIndex(ctx, req.(*SearchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// Search_ServiceDesc is the grpc.ServiceDesc for Search service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var Search_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "search.Search",
+	HandlerType: (*SearchServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Ping",
+			Handler:    _Search_Ping_Handler,
+		},
+		{
+			MethodName: "Search",
+			Handler:    _Search_Search_Handler,
+		},
+		{
+			MethodName: "SearchIndex",
+			Handler:    _Search_SearchIndex_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "proto/search/search.proto",
+}
+```
+==================================================
+
+FILE: proto/search/search.proto
+--------------------
+```
+syntax = "proto3";
+
+package search;
+
+import "google/protobuf/empty.proto";
+
+option go_package = "yadro.com/course/proto/search";
+
+
+message SearchRequest {
+  string phrase = 1;
+  int64 limit = 2;
+}
+
+message Comics {
+  int64 id = 1;
+  string url = 2;
+  int64 score = 3;
+}
+
+message SearchReply {
+  repeated Comics comics = 1;
+}
+
+service Search {
+  rpc Ping(google.protobuf.Empty) returns (google.protobuf.Empty) {}
+  rpc Search(SearchRequest) returns (SearchReply) {}
+  rpc SearchIndex(SearchRequest) returns (SearchReply) {}
+}
+```
+==================================================
+
+FILE: api/main.go
+--------------------
+```
+package main
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"log/slog"
+	"net"
+	"net/http"
+	"os"
+	"os/signal"
+
+	"yadro.com/course/api/adapters/aaa"
+	"yadro.com/course/api/adapters/rest"
+	"yadro.com/course/api/adapters/rest/middleware"
+	"yadro.com/course/api/adapters/search"
+	"yadro.com/course/api/adapters/update"
+	"yadro.com/course/api/adapters/words"
+	"yadro.com/course/api/config"
+	"yadro.com/course/api/core"
+	"yadro.com/course/closers"
+)
+
+func main() {
+	var configPath string
+	flag.StringVar(&configPath, "config", "config.yaml", "server configuration file")
+	flag.Parse()
+
+	cfg := config.MustLoad(configPath)
+
+	log := mustMakeLogger(cfg.LogLevel)
+
+	if err := run(cfg, log); err != nil {
+		log.Error("Server failed to run", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run(cfg config.Config, log *slog.Logger) error {
+	log.Info("starting server")
+	log.Debug("debug messages are enabled")
+
+	wordsClient, err := words.NewClient(cfg.WordsAddress, log)
+	if err != nil {
+		return fmt.Errorf("cannot init words adapter: %v", err)
+	}
+	defer closers.CloseOrLog(wordsClient, log)
+
+	updateClient, err := update.NewClient(cfg.UpdateAddress, log)
+	if err != nil {
+		return fmt.Errorf("cannot init update adapter: %v", err)
+	}
+	defer closers.CloseOrLog(updateClient, log)
+
+	searchClient, err := search.NewClient(cfg.SearchAddress, log)
+	if err != nil {
+		return fmt.Errorf("cannot init search adapter: %v", err)
+	}
+	defer closers.CloseOrLog(searchClient, log)
+
+	authSrv, err := aaa.New(cfg.TokenTTL, log)
+	if err != nil {
+		return fmt.Errorf("cannot init authenticator: %v", err)
+	}
+
+	mux := http.NewServeMux()
+
+	mux.Handle("POST /api/login", rest.NewLoginHandler(log, authSrv))
+	mux.Handle("GET /api/db/stats", rest.NewUpdateStatsHandler(log, updateClient))
+	mux.Handle("GET /api/db/status", rest.NewUpdateStatusHandler(log, updateClient))
+
+	// authorize update/delete
+	mux.Handle("POST /api/db/update",
+		middleware.Auth(
+			rest.NewUpdateHandler(log, updateClient), authSrv,
+		),
+	)
+	mux.Handle("DELETE /api/db",
+		middleware.Auth(
+			rest.NewDropHandler(log, updateClient), authSrv,
+		),
+	)
+
+	// restrict
+	mux.Handle("GET /api/search",
+		middleware.Concurrency(
+			rest.NewSearchHandler(log, searchClient), cfg.SearchConcurrency,
+		),
+	)
+	mux.Handle("GET /api/isearch",
+		middleware.Rate(
+			rest.NewSearchIndexHandler(log, searchClient), cfg.SearchRate,
+		),
+	)
+
+	mux.Handle("GET /api/ping", rest.NewPingHandler(
+		log,
+		map[string]core.Pinger{
+			"words":  wordsClient,
+			"update": updateClient,
+			"search": searchClient,
+		}),
+	)
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	server := http.Server{
+		Addr:        cfg.HTTPConfig.Address,
+		ReadTimeout: cfg.HTTPConfig.Timeout,
+		Handler:     mux,
+		BaseContext: func(_ net.Listener) context.Context { return ctx },
+	}
+
+	go func() {
+		<-ctx.Done()
+		log.Debug("shutting down server")
+		if err := server.Shutdown(context.Background()); err != nil {
+			log.Error("erroneous shutdown", "error", err)
+		}
+	}()
+
+	log.Info("Running HTTP server", "address", cfg.HTTPConfig.Address)
+	if err := server.ListenAndServe(); err != nil {
+		if !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("server closed unexpectedly: %v", err)
+		}
+	}
+	return nil
+}
+
+func mustMakeLogger(logLevel string) *slog.Logger {
+	var level slog.Level
+	switch logLevel {
+	case "DEBUG":
+		level = slog.LevelDebug
+	case "INFO":
+		level = slog.LevelInfo
+	case "ERROR":
+		level = slog.LevelError
+	default:
+		panic("unknown log level: " + logLevel)
+	}
+	handler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level, AddSource: true})
+	return slog.New(handler)
+}
+```
+==================================================
+
+FILE: api/adapters/words/words.go
+--------------------
+```
+package words
+
+import (
+	"context"
+	"log/slog"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
+	"yadro.com/course/api/core"
+	wordspb "yadro.com/course/proto/words"
+)
+
+type Client struct {
+	log    *slog.Logger
+	client wordspb.WordsClient
+	conn   *grpc.ClientConn
+}
+
+func NewClient(address string, log *slog.Logger) (*Client, error) {
+	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, err
+	}
+	return &Client{
+		client: wordspb.NewWordsClient(conn),
+		log:    log,
+		conn:   conn,
+	}, nil
+}
+
+func (c *Client) Close() error {
+	return c.conn.Close()
+}
+
+func (c *Client) Norm(ctx context.Context, phrase string) ([]string, error) {
+	reply, err := c.client.Norm(ctx, &wordspb.WordsRequest{Phrase: phrase})
+	if err != nil {
+		if status.Code(err) == codes.ResourceExhausted {
+			return nil, core.ErrBadArguments
+		}
+		return nil, err
+	}
+	return reply.GetWords(), nil
+}
+
+func (c *Client) Ping(ctx context.Context) error {
+	_, err := c.client.Ping(ctx, nil)
+	return err
+}
+```
+==================================================
+
+FILE: api/adapters/update/update.go
+--------------------
+```
+package update
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
+	"yadro.com/course/api/core"
+	updatepb "yadro.com/course/proto/update"
+)
+
+type Client struct {
+	log    *slog.Logger
+	client updatepb.UpdateClient
+	conn   *grpc.ClientConn
+}
+
+func NewClient(address string, log *slog.Logger) (*Client, error) {
+	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, err
+	}
+	return &Client{
+		client: updatepb.NewUpdateClient(conn),
+		log:    log,
+		conn:   conn,
+	}, nil
+}
+
+func (c *Client) Close() error {
+	return c.conn.Close()
+}
+
+func (c *Client) Ping(ctx context.Context) error {
+	_, err := c.client.Ping(ctx, nil)
+	return err
+}
+
+func (c *Client) Status(ctx context.Context) (core.UpdateStatus, error) {
+	reply, err := c.client.Status(ctx, nil)
+	if err != nil {
+		return core.StatusUpdateUnknown, err
+	}
+	switch reply.Status {
+	case updatepb.Status_STATUS_IDLE:
+		return core.StatusUpdateIdle, nil
+	case updatepb.Status_STATUS_RUNNING:
+		return core.StatusUpdateRunning, nil
+	}
+	return core.StatusUpdateUnknown, errors.New("unknown status")
+}
+
+func (c *Client) Stats(ctx context.Context) (core.UpdateStats, error) {
+	reply, err := c.client.Stats(ctx, nil)
+	if err != nil {
+		return core.UpdateStats{}, err
+	}
+	return core.UpdateStats{
+		WordsTotal:    int(reply.GetWordsTotal()),
+		WordsUnique:   int(reply.GetWordsUnique()),
+		ComicsFetched: int(reply.GetComicsFetched()),
+		ComicsTotal:   int(reply.GetComicsTotal()),
+	}, nil
+}
+
+func (c *Client) Update(ctx context.Context) error {
+	_, err := c.client.Update(ctx, nil)
+	if status.Code(err) == codes.AlreadyExists {
+		return core.ErrAlreadyExists
+	}
+	return err
+}
+
+func (c *Client) Drop(ctx context.Context) error {
+	_, err := c.client.Drop(ctx, nil)
+	return err
+}
+```
+==================================================
+
+FILE: api/adapters/rest/api.go
+--------------------
+```
+package rest
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"strconv"
+
+	"yadro.com/course/api/core"
+)
+
+func encodeReply(w io.Writer, reply any) error {
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(reply); err != nil {
+		return fmt.Errorf("could not encode comics: %v", err)
+	}
+	return nil
+}
+
+type PingResponse struct {
+	Replies map[string]string `json:"replies"`
+}
+
+func NewPingHandler(log *slog.Logger, pingers map[string]core.Pinger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		reply := PingResponse{
+			Replies: make(map[string]string),
+		}
+		for name, pinger := range pingers {
+			if err := pinger.Ping(r.Context()); err != nil {
+				reply.Replies[name] = "unavailable"
+				log.Error("one of services is not available", "service", name, "error", err)
+				continue
+			}
+			reply.Replies[name] = "ok"
+		}
+		if err := encodeReply(w, reply); err != nil {
+			log.Error("cannot encode reply", "error", err)
+		}
+	}
+}
+
+type Authenticator interface {
+	Login(user, password string) (string, error)
+}
+
+type Login struct {
+	Name     string `json:"name"`
+	Password string `json:"password"`
+}
+
+func NewLoginHandler(log *slog.Logger, auth Authenticator) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var l Login
+		if err := json.NewDecoder(r.Body).Decode(&l); err != nil {
+			log.Error("could not decode login form", "error", err)
+			http.Error(w, "could not parse login data", http.StatusBadRequest)
+			return
+		}
+		token, err := auth.Login(l.Name, l.Password)
+		if err != nil {
+			log.Error("could not authenticate", "user", l.Name, "error", err)
+			http.Error(w, "could not authenticate", http.StatusUnauthorized)
+		}
+		if _, err := w.Write([]byte(token)); err != nil {
+			log.Error("failed to write reply", "error", err)
+		}
+	}
+}
+
+func NewUpdateHandler(log *slog.Logger, updater core.Updater) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := updater.Update(r.Context()); err != nil {
+			log.Error("error while update", "error", err)
+			if errors.Is(err, core.ErrAlreadyExists) {
+				http.Error(w, err.Error(), http.StatusAccepted)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}
+}
+
+type UpdateStats struct {
+	WordsTotal    int `json:"words_total"`
+	WordsUnique   int `json:"words_unique"`
+	ComicsFetched int `json:"comics_fetched"`
+	ComicsTotal   int `json:"comics_total"`
+}
+
+func NewUpdateStatsHandler(log *slog.Logger, updater core.Updater) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		stats, err := updater.Stats(r.Context())
+		if err != nil {
+			log.Error("error while stats", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		reply := UpdateStats{
+			WordsTotal:    stats.WordsTotal,
+			WordsUnique:   stats.WordsUnique,
+			ComicsFetched: stats.ComicsFetched,
+			ComicsTotal:   stats.ComicsTotal,
+		}
+		if err := encodeReply(w, reply); err != nil {
+			log.Error("cannot encode reply", "error", err)
+		}
+	}
+}
+
+type UpdateStatus struct {
+	Status string `json:"status"`
+}
+
+func NewUpdateStatusHandler(log *slog.Logger, updater core.Updater) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		status, err := updater.Status(r.Context())
+		if err != nil {
+			log.Error("error while status", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		reply := UpdateStatus{Status: string(status)}
+		if err := encodeReply(w, reply); err != nil {
+			log.Error("cannot encode reply", "error", err)
+		}
+	}
+}
+
+func NewDropHandler(log *slog.Logger, updater core.Updater) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := updater.Drop(r.Context()); err != nil {
+			log.Error("error while drop", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}
+}
+
+type Comics struct {
+	ID    int    `json:"id"`
+	URL   string `json:"url"`
+	Score int    `json:"score"`
+}
+
+type ComicsReply struct {
+	Comics []Comics `json:"comics"`
+	Total  int      `json:"total"`
+}
+
+func NewSearchHandler(log *slog.Logger, searcher core.Searcher) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var limit int
+		var err error
+		limitStr := r.URL.Query().Get("limit")
+		if limitStr != "" {
+			limit, err = strconv.Atoi(limitStr)
+			if err != nil {
+				log.Error("wrong limit", "value", limitStr)
+				http.Error(w, "bad limit", http.StatusBadRequest)
+				return
+			}
+			if limit < 0 {
+				log.Error("wrong limit", "value", limit)
+				http.Error(w, "bad limit", http.StatusBadRequest)
+				return
+			}
+		}
+		phrase := r.URL.Query().Get("phrase")
+		if phrase == "" {
+			log.Error("no phrase")
+			http.Error(w, "no phrase", http.StatusBadRequest)
+			return
+		}
+
+		comics, err := searcher.Search(r.Context(), phrase, limit)
+		if err != nil {
+			if errors.Is(err, core.ErrNotFound) {
+				http.Error(w, "no comics found", http.StatusNotFound)
+				return
+			}
+			log.Error("error while seaching", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		reply := ComicsReply{
+			Comics: make([]Comics, 0, len(comics)),
+			Total:  len(comics),
+		}
+		for _, c := range comics {
+			reply.Comics = append(reply.Comics, Comics{ID: c.ID, URL: c.URL, Score: c.Score})
+		}
+
+		if err := encodeReply(w, reply); err != nil {
+			log.Error("cannot encode reply", "error", err)
+		}
+	}
+}
+
+func NewSearchIndexHandler(log *slog.Logger, searcher core.Searcher) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var limit int
+		var err error
+		limitStr := r.URL.Query().Get("limit")
+		if limitStr != "" {
+			limit, err = strconv.Atoi(limitStr)
+			if err != nil {
+				log.Error("wrong limit", "value", limitStr)
+				http.Error(w, "bad limit", http.StatusBadRequest)
+				return
+			}
+			if limit < 0 {
+				log.Error("wrong limit", "value", limit)
+				http.Error(w, "bad limit", http.StatusBadRequest)
+				return
+			}
+		}
+		phrase := r.URL.Query().Get("phrase")
+		if phrase == "" {
+			log.Error("no phrase")
+			http.Error(w, "no phrase", http.StatusBadRequest)
+			return
+		}
+
+		comics, err := searcher.SearchIndex(r.Context(), phrase, limit)
+		if err != nil {
+			if errors.Is(err, core.ErrNotFound) {
+				http.Error(w, "no comics found", http.StatusNotFound)
+				return
+			}
+			log.Error("error while seaching", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		reply := ComicsReply{
+			Comics: make([]Comics, 0, len(comics)),
+			Total:  len(comics),
+		}
+		for _, c := range comics {
+			reply.Comics = append(reply.Comics, Comics{ID: c.ID, URL: c.URL, Score: c.Score})
+		}
+
+		if err := encodeReply(w, reply); err != nil {
+			log.Error("cannot encode reply", "error", err)
+		}
+	}
+}
+```
+==================================================
+
+FILE: api/adapters/rest/middleware/concurrency.go
+--------------------
+```
+package middleware
+
+import (
+	"net/http"
+)
+
+func Concurrency(next http.HandlerFunc, limit int) http.HandlerFunc {
+	limiter := make(chan struct{}, limit)
+	return func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case limiter <- struct{}{}:
+			next.ServeHTTP(w, r)
+			<-limiter
+		default:
+			http.Error(w, "try later", http.StatusServiceUnavailable)
+		}
+	}
+}
+```
+==================================================
+
+FILE: api/adapters/rest/middleware/auth.go
+--------------------
+```
+package middleware
+
+import (
+	"net/http"
+	"strings"
+)
+
+type TokenVerifier interface {
+	Verify(token string) error
+}
+
+func Auth(next http.HandlerFunc, verifier TokenVerifier) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		parts := strings.Fields(r.Header.Get("Authorization"))
+		if len(parts) != 2 || parts[0] != "Token" {
+			http.Error(w, "bad authorization header", http.StatusUnauthorized)
+			return
+		}
+		if err := verifier.Verify(parts[1]); err != nil {
+			http.Error(w, "not authorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	}
+}
+```
+==================================================
+
+FILE: api/adapters/rest/middleware/rate.go
+--------------------
+```
+package middleware
+
+import (
+	"fmt"
+	"net/http"
+
+	"golang.org/x/time/rate"
+)
+
+func Rate(next http.HandlerFunc, rps int) http.HandlerFunc {
+	limiter := rate.NewLimiter(rate.Limit(rps), 1)
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := limiter.Wait(r.Context()); err != nil {
+			fmt.Println(err)
+			http.Error(w, "server is going down", http.StatusServiceUnavailable)
+			return
+		}
+		next.ServeHTTP(w, r)
+	}
+}
+```
+==================================================
+
+FILE: api/adapters/search/search.go
+--------------------
+```
+package search
+
+import (
+	"context"
+	"log/slog"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
+	"yadro.com/course/api/core"
+	searchpb "yadro.com/course/proto/search"
+)
+
+type Client struct {
+	log    *slog.Logger
+	client searchpb.SearchClient
+	conn   *grpc.ClientConn
+}
+
+func NewClient(address string, log *slog.Logger) (*Client, error) {
+	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, err
+	}
+	return &Client{
+		client: searchpb.NewSearchClient(conn),
+		log:    log,
+		conn:   conn,
+	}, nil
+}
+
+func (c *Client) Close() error {
+	return c.conn.Close()
+}
+
+func (c *Client) Search(ctx context.Context, phrase string, limit int) ([]core.Comics, error) {
+	reply, err := c.client.Search(ctx, &searchpb.SearchRequest{
+		Phrase: phrase, Limit: int64(limit),
+	})
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return nil, core.ErrNotFound
+		}
+		return nil, err
+	}
+	comics := make([]core.Comics, 0, len(reply.Comics))
+	for _, c := range reply.Comics {
+		comics = append(comics, core.Comics{ID: int(c.Id), URL: c.Url, Score: int(c.Score)})
+	}
+	return comics, nil
+}
+
+func (c *Client) SearchIndex(ctx context.Context, phrase string, limit int) ([]core.Comics, error) {
+	reply, err := c.client.SearchIndex(ctx, &searchpb.SearchRequest{
+		Phrase: phrase, Limit: int64(limit),
+	})
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return nil, core.ErrNotFound
+		}
+		return nil, err
+	}
+	comics := make([]core.Comics, 0, len(reply.Comics))
+	for _, c := range reply.Comics {
+		comics = append(comics, core.Comics{ID: int(c.Id), URL: c.Url, Score: int(c.Score)})
+	}
+	return comics, nil
+}
+
+func (c *Client) Ping(ctx context.Context) error {
+	_, err := c.client.Ping(ctx, nil)
+	return err
+}
+```
+==================================================
+
+FILE: api/adapters/aaa/auth.go
+--------------------
+```
+package aaa
+
+import (
+	"errors"
+	"fmt"
+	"log/slog"
+	"os"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+)
+
+const secretKey = "something secret here"
+const adminRole = "superuser"
+
+type AAA struct {
+	users    map[string]string
+	tokenTTL time.Duration
+	log      *slog.Logger
+}
+
+func New(tokenTTL time.Duration, log *slog.Logger) (AAA, error) {
+	const adminUser = "ADMIN_USER"
+	const adminPass = "ADMIN_PASSWORD"
+	user, ok := os.LookupEnv(adminUser)
+	if !ok {
+		return AAA{}, fmt.Errorf("could not get admin user from enviroment")
+	}
+	password, ok := os.LookupEnv(adminPass)
+	if !ok {
+		return AAA{}, fmt.Errorf("could not get admin password from enviroment")
+	}
+
+	return AAA{
+		users:    map[string]string{user: password},
+		tokenTTL: tokenTTL,
+		log:      log,
+	}, nil
+}
+
+func (a AAA) Login(name, password string) (string, error) {
+	if name == "" {
+		return "", errors.New("empty user")
+	}
+	savedPass, ok := a.users[name]
+	if !ok {
+		return "", errors.New("unknown user")
+	}
+	if savedPass != password {
+		return "", errors.New("wrong password")
+	}
+	// create token
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub":  adminRole,
+		"name": name,
+		"exp":  jwt.NewNumericDate(time.Now().Add(a.tokenTTL)),
+	})
+
+	return token.SignedString([]byte(secretKey))
+}
+
+func (a AAA) Verify(tokenString string) error {
+	token, err := jwt.Parse(
+		tokenString,
+		func(token *jwt.Token) (any, error) {
+			return []byte(secretKey), nil
+		},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
+	if err != nil {
+		a.log.Error("cannot parse token", "error", err)
+		return fmt.Errorf("cannot parse token")
+	}
+	if !token.Valid {
+		a.log.Error("token is invalid")
+		return errors.New("token is invalid")
+	}
+	subject, err := token.Claims.GetSubject()
+	if err != nil {
+		a.log.Error("no subject", "error", err)
+		return errors.New("incomplete token")
+	}
+	if subject != adminRole {
+		a.log.Error("not admin", "subject", subject)
+		return errors.New("not authorized")
+	}
+	return nil
+}
+```
+==================================================
+
+FILE: api/core/errors.go
+--------------------
+```
+package core
+
+import "errors"
+
+var ErrBadArguments = errors.New("arguments are not acceptable")
+var ErrAlreadyExists = errors.New("resource or task already exists")
+var ErrNotFound = errors.New("resource is not found")
+```
+==================================================
+
+FILE: api/core/models.go
+--------------------
+```
+package core
+
+type UpdateStatus string
+
+const (
+	StatusUpdateUnknown UpdateStatus = "unknown"
+	StatusUpdateIdle    UpdateStatus = "idle"
+	StatusUpdateRunning UpdateStatus = "running"
+)
+
+type UpdateStats struct {
+	WordsTotal    int
+	WordsUnique   int
+	ComicsFetched int
+	ComicsTotal   int
+}
+
+type Comics struct {
+	ID    int
+	URL   string
+	Score int
+}
+```
+==================================================
+
+FILE: api/core/ports.go
+--------------------
+```
+package core
+
+import "context"
+
+type Normalizer interface {
+	Norm(context.Context, string) ([]string, error)
+}
+
+type Pinger interface {
+	Ping(context.Context) error
+}
+
+type Updater interface {
+	Update(context.Context) error
+	Stats(context.Context) (UpdateStats, error)
+	Status(context.Context) (UpdateStatus, error)
+	Drop(context.Context) error
+}
+
+type Searcher interface {
+	Search(context.Context, string, int) ([]Comics, error)
+	SearchIndex(context.Context, string, int) ([]Comics, error)
+}
+```
+==================================================
+
+FILE: api/config/config.go
+--------------------
+```
+package config
+
+import (
+	"log"
+	"time"
+
+	"github.com/ilyakaznacheev/cleanenv"
+)
+
+type HTTPConfig struct {
+	Address string        `yaml:"address" env:"API_ADDRESS" env-default:"localhost:80"`
+	Timeout time.Duration `yaml:"timeout" env:"API_TIMEOUT" env-default:"5s"`
+}
+
+type Config struct {
+	LogLevel          string        `yaml:"log_level" env:"LOG_LEVEL" env-default:"DEBUG"`
+	SearchConcurrency int           `yaml:"search_concurrency" env:"SEARCH_CONCURRENCY" env-default:"1"`
+	SearchRate        int           `yaml:"search_rate" env:"SEARCH_RATE" env-default:"1"`
+	HTTPConfig        HTTPConfig    `yaml:"api_server"`
+	WordsAddress      string        `yaml:"words_address" env:"WORDS_ADDRESS" env-default:"words:81"`
+	UpdateAddress     string        `yaml:"update_address" env:"UPDATE_ADDRESS" env-default:"update:82"`
+	SearchAddress     string        `yaml:"search_address" env:"SEARCH_ADDRESS" env-default:"search:83"`
+	TokenTTL          time.Duration `yaml:"token_ttl" env:"TOKEN_TTL" env-default:"24h"`
+}
+
+func MustLoad(configPath string) Config {
+	var cfg Config
+	if err := cleanenv.ReadConfig(configPath, &cfg); err != nil {
+		log.Fatalf("cannot read config %q: %s", configPath, err)
+	}
+	return cfg
+}
+```
+==================================================
+
+FILE: words/main.go
+--------------------
+```
+package main
+
+import (
+	"context"
+	"flag"
+	"log"
+	"net"
+	"strconv"
+
+	"github.com/ilyakaznacheev/cleanenv"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
+	wordspb "yadro.com/course/proto/words"
+	"yadro.com/course/words/words"
+)
+
+const maxPhraseLen = 20000
+
+type server struct {
+	wordspb.UnimplementedWordsServer
+}
+
+func (s *server) Ping(_ context.Context, _ *emptypb.Empty) (*emptypb.Empty, error) {
+	return nil, nil
+}
+
+func (s *server) Norm(_ context.Context, in *wordspb.WordsRequest) (*wordspb.WordsReply, error) {
+	if len(in.GetPhrase()) > maxPhraseLen {
+		return nil, status.Error(
+			codes.ResourceExhausted,
+			"phrase is large than "+strconv.Itoa(maxPhraseLen),
+		)
+	}
+	return &wordspb.WordsReply{
+		Words: words.Norm(in.GetPhrase()),
+	}, nil
+}
+
+type Config struct {
+	Address string `yaml:"words_address" env:"WORDS_ADDRESS" env-default:"80"`
+}
+
+func main() {
+	var configPath string
+	flag.StringVar(&configPath, "config", "config.yaml", "server configuration file")
+	flag.Parse()
+
+	var cfg Config
+	if err := cleanenv.ReadConfig(configPath, &cfg); err != nil {
+		panic(err)
+	}
+
+	listener, err := net.Listen("tcp", cfg.Address)
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+
+	s := grpc.NewServer()
+	wordspb.RegisterWordsServer(s, &server{})
+	reflection.Register(s)
+
+	if err := s.Serve(listener); err != nil {
+		log.Fatalf("failed to serve: %v", err)
+	}
+}
+```
+==================================================
+
+FILE: words/words/words.go
+--------------------
+```
+package words
+
+import (
+	"maps"
+	"slices"
+	"strings"
+	"unicode"
+
+	"github.com/kljensen/snowball/english"
+)
+
+func Norm(phrase string) []string {
+	words := make(map[string]bool)
+	splitted := strings.FieldsFunc(phrase, func(r rune) bool {
+		return !unicode.IsDigit(r) && !unicode.IsLetter(r)
+	})
+	for _, w := range splitted {
+		w := strings.ToLower(w)
+		if english.IsStopWord(w) {
+			continue
+		}
+		words[english.Stem(w, false)] = true
+	}
+	return slices.Collect(maps.Keys(words))
+}
+```
+==================================================
+
+FILE: update/main.go
+--------------------
+```
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"log/slog"
+	"net"
+	"os"
+	"os/signal"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
+	"yadro.com/course/closers"
+	updatepb "yadro.com/course/proto/update"
+	"yadro.com/course/update/adapters/db"
+	"yadro.com/course/update/adapters/events"
+	updategrpc "yadro.com/course/update/adapters/grpc"
+	"yadro.com/course/update/adapters/words"
+	"yadro.com/course/update/adapters/xkcd"
+	"yadro.com/course/update/config"
+	"yadro.com/course/update/core"
+)
+
+func main() {
+
+	// config
+	var configPath string
+	flag.StringVar(&configPath, "config", "config.yaml", "server configuration file")
+	flag.Parse()
+	cfg := config.MustLoad(configPath)
+
+	// logger
+	log := mustMakeLogger(cfg.LogLevel)
+
+	if err := run(cfg, log); err != nil {
+		log.Error("server failed", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run(cfg config.Config, log *slog.Logger) error {
+	log.Info("starting server")
+	log.Debug("debug messages are enabled")
+
+	// database adapter
+	storage, err := db.New(log, cfg.DBAddress)
+	if err != nil {
+		log.Error("failed to connect to db", "error", err)
+	}
+	defer closers.CloseOrLog(storage, log)
+	if err := storage.Migrate(); err != nil {
+		return fmt.Errorf("failed to migrate db: %v", err)
+	}
+
+	// xkcd adapter
+	xkcd, err := xkcd.NewClient(cfg.XKCD.URL, cfg.XKCD.Timeout, log)
+	if err != nil {
+		return fmt.Errorf("failed create XKCD client: %v", err)
+	}
+
+	// words adapter
+	words, err := words.NewClient(cfg.WordsAddress, log)
+	if err != nil {
+		return fmt.Errorf("failed create Words client: %v", err)
+	}
+	defer closers.CloseOrLog(words, log)
+
+	// message broker
+	notifier, err := events.New(cfg.BrokerAddress, log)
+	if err != nil {
+		return fmt.Errorf("failed create notifier: %v", err)
+	}
+	defer notifier.Close()
+
+	// service
+	updater, err := core.NewService(log, storage, xkcd, words, cfg.XKCD.Concurrency, notifier)
+	if err != nil {
+		return fmt.Errorf("failed create Update service: %v", err)
+	}
+
+	// grpc server
+	listener, err := net.Listen("tcp", cfg.Address)
+	if err != nil {
+		return fmt.Errorf("failed to listen: %v", err)
+	}
+
+	s := grpc.NewServer()
+	updatepb.RegisterUpdateServer(s, updategrpc.NewServer(updater))
+	reflection.Register(s)
+
+	// context for Ctrl-C
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	go func() {
+		<-ctx.Done()
+		log.Debug("shutting down server")
+		s.GracefulStop()
+	}()
+
+	if err := s.Serve(listener); err != nil {
+		return fmt.Errorf("failed to serve: %v", err)
+	}
+
+	return nil
+}
+
+func mustMakeLogger(logLevel string) *slog.Logger {
+	var level slog.Level
+	switch logLevel {
+	case "DEBUG":
+		level = slog.LevelDebug
+	case "INFO":
+		level = slog.LevelInfo
+	case "ERROR":
+		level = slog.LevelError
+	default:
+		panic("unknown log level: " + logLevel)
+	}
+	handler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level, AddSource: true})
+	return slog.New(handler)
+}
+```
+==================================================
+
+FILE: update/adapters/db/storage.go
+--------------------
+```
+package db
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"log/slog"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jmoiron/sqlx"
+	"yadro.com/course/update/core"
+)
+
+type DB struct {
+	log  *slog.Logger
+	conn *sqlx.DB
+}
+
+func New(log *slog.Logger, address string) (*DB, error) {
+
+	db, err := sqlx.Connect("pgx", address)
+	if err != nil {
+		log.Error("connection problem", "address", address, "error", err)
+		return nil, err
+	}
+
+	return &DB{
+		log:  log,
+		conn: db,
+	}, nil
+}
+
+func (db *DB) Close() error {
+	return db.conn.Close()
+}
+
+func (db *DB) Add(ctx context.Context, comics core.Comics) error {
+	_, err := db.conn.ExecContext(
+		ctx,
+		"INSERT INTO comics (id, url, words) VALUES($1, $2, $3)",
+		comics.ID, comics.URL, comics.Words,
+	)
+
+	return err
+}
+
+func (db *DB) Stats(ctx context.Context) (core.DBStats, error) {
+	var stats core.DBStats
+	err := db.conn.GetContext(
+		ctx, &stats.ComicsFetched,
+		"SELECT COUNT(*) FROM comics")
+	if err != nil {
+		return core.DBStats{}, err
+	}
+	err = db.conn.GetContext(
+		ctx, &stats.WordsTotal,
+		"SELECT coalesce(SUM(array_length(words,1)), 0) FROM comics",
+	)
+	if err != nil {
+		return core.DBStats{}, err
+	}
+	err = db.conn.GetContext(
+		ctx, &stats.WordsUnique,
+		"SELECT count(*) FROM (SELECT distinct(unnest(words)) FROM comics)",
+	)
+	if err != nil {
+		return core.DBStats{}, err
+	}
+
+	return stats, nil
+}
+
+func (db *DB) IDs(ctx context.Context) ([]int, error) {
+	var IDs []int
+	err := db.conn.SelectContext(
+		ctx, &IDs,
+		"SELECT id FROM comics")
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return IDs, nil
+}
+
+func (db *DB) Drop(ctx context.Context) error {
+
+	_, err := db.conn.ExecContext(ctx, "TRUNCATE comics")
+	return err
+}
+```
+==================================================
+
+FILE: update/adapters/db/migrations.go
+--------------------
+```
+package db
+
+import (
+	"embed"
+
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/pgx"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
+)
+
+//go:embed migrations/*.sql
+var migrationFiles embed.FS
+
+func (db *DB) Migrate() error {
+	db.log.Debug("running migration")
+	files, err := iofs.New(migrationFiles, "migrations") // get migrations from
+	if err != nil {
+		return err
+	}
+	driver, err := pgx.WithInstance(db.conn.DB, &pgx.Config{})
+	if err != nil {
+		return err
+	}
+	m, err := migrate.NewWithInstance("iofs", files, "pgx", driver)
+	if err != nil {
+		return err
+	}
+
+	err = m.Up()
+
+	if err != nil {
+		if err != migrate.ErrNoChange {
+			db.log.Error("migration failed", "error", err)
+			return err
+		}
+		db.log.Debug("migration did not change anything")
+	}
+
+	db.log.Debug("migration finished")
+	return nil
+}
+```
+==================================================
+
+FILE: update/adapters/db/migrations/000001_create_comics.up.sql
+--------------------
+```
+CREATE TABLE comics (
+    id int PRIMARY KEY,
+    url TEXT NOT NULL,
+    words TEXT[]
+);
+```
+==================================================
+
+FILE: update/adapters/db/migrations/000001_create_comics.down.sql
+--------------------
+```
+DROP TABLE IF EXISTS comics;
+```
+==================================================
+
+FILE: update/adapters/events/events.go
+--------------------
+```
+package events
+
+import (
+	"log/slog"
+
+	"github.com/nats-io/nats.go"
+)
+
+const updateTopic = "xkcd.db.updated"
+
+type Broker struct {
+	connection *nats.Conn
+	log        *slog.Logger
+}
+
+func New(address string, log *slog.Logger) (*Broker, error) {
+	nc, err := nats.Connect(address)
+	if err != nil {
+		return nil, err
+	}
+	log.Debug("connected to broker", "address", address)
+	return &Broker{connection: nc, log: log}, nil
+}
+
+func (b *Broker) Close() {
+	b.connection.Close()
+}
+
+func (b *Broker) NotifyDbUpdated() error {
+	return b.connection.Publish(updateTopic, []byte("XKCD DB has been updated"))
+}
+
+func (b *Broker) NotifyDbCleaned() error {
+	return b.connection.Publish(updateTopic, []byte("XKCD DB has been cleaned"))
+}
+```
+==================================================
+
+FILE: update/adapters/words/words.go
+--------------------
+```
+package words
+
+import (
+	"context"
+	"log/slog"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
+	wordspb "yadro.com/course/proto/words"
+	"yadro.com/course/update/core"
+)
+
+type Client struct {
+	log    *slog.Logger
+	client wordspb.WordsClient
+	conn   *grpc.ClientConn
+}
+
+func NewClient(address string, log *slog.Logger) (*Client, error) {
+	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, err
+	}
+	return &Client{
+		client: wordspb.NewWordsClient(conn),
+		log:    log,
+		conn:   conn,
+	}, nil
+}
+
+func (c *Client) Close() error {
+	return c.conn.Close()
+}
+
+func (c *Client) Norm(ctx context.Context, phrase string) ([]string, error) {
+	reply, err := c.client.Norm(ctx, &wordspb.WordsRequest{Phrase: phrase})
+	if err != nil {
+		if status.Code(err) == codes.ResourceExhausted {
+			return nil, core.ErrBadArguments
+		}
+		return nil, err
+	}
+	return reply.GetWords(), nil
+}
+
+func (c *Client) Ping(ctx context.Context) error {
+	_, err := c.client.Ping(ctx, nil)
+	return err
+}
+```
+==================================================
+
+FILE: update/adapters/xkcd/xkcd.go
+--------------------
+```
+package xkcd
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"strings"
+	"time"
+
+	"yadro.com/course/closers"
+	"yadro.com/course/update/core"
+)
+
+const lastPath = "/info.0.json"
+
+type Client struct {
+	log    *slog.Logger
+	client http.Client
+	url    string
+}
+
+func NewClient(url string, timeout time.Duration, log *slog.Logger) (*Client, error) {
+	if url == "" {
+		return nil, fmt.Errorf("empty base url specified")
+	}
+	return &Client{
+		client: http.Client{Timeout: timeout},
+		log:    log,
+		url:    url,
+	}, nil
+}
+
+func (c Client) Get(ctx context.Context, id int) (core.XKCDInfo, error) {
+	return c.get(ctx, fmt.Sprintf("%s/%d/%s", c.url, id, lastPath))
+}
+
+func (c Client) LastID(ctx context.Context) (int, error) {
+	comics, err := c.get(ctx, c.url+lastPath)
+	if err != nil {
+		return 0, err
+	}
+	return comics.ID, nil
+}
+
+func (c Client) get(ctx context.Context, url string) (core.XKCDInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return core.XKCDInfo{}, fmt.Errorf("failed to create request: %v", err)
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return core.XKCDInfo{}, fmt.Errorf("failed to request comics: %v", err)
+	}
+	defer closers.CloseOrLog(resp.Body, c.log)
+	if resp.StatusCode == http.StatusNotFound {
+		return core.XKCDInfo{}, core.ErrNotFound
+	}
+	info := struct {
+		ID         int    `json:"num"`
+		URL        string `json:"img"`
+		Title      string `json:"title"`
+		SafeTitle  string `json:"safe_title"`
+		Transcript string `json:"transcript"`
+		Alt        string `json:"alt"`
+	}{}
+	if err = json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return core.XKCDInfo{}, fmt.Errorf("failed to decode comics: %v", err)
+	}
+
+	return core.XKCDInfo{
+		ID:  info.ID,
+		URL: info.URL,
+		Description: strings.Join([]string{
+			info.Title, info.SafeTitle, info.Transcript, info.Alt},
+			" ",
+		),
+	}, nil
+}
+```
+==================================================
+
+FILE: update/adapters/grpc/server.go
+--------------------
+```
+package grpc
+
+import (
+	"context"
+	"errors"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
+	updatepb "yadro.com/course/proto/update"
+	"yadro.com/course/update/core"
+)
+
+func NewServer(service core.Updater) *Server {
+	return &Server{service: service}
+}
+
+type Server struct {
+	updatepb.UnimplementedUpdateServer
+	service core.Updater
+}
+
+func (s *Server) Ping(_ context.Context, _ *emptypb.Empty) (*emptypb.Empty, error) {
+	return nil, nil
+}
+
+func (s *Server) Status(ctx context.Context, _ *emptypb.Empty) (*updatepb.StatusReply, error) {
+	st := s.service.Status(ctx)
+
+	switch st {
+	case core.StatusIdle:
+		return &updatepb.StatusReply{Status: updatepb.Status_STATUS_IDLE}, nil
+	case core.StatusRunning:
+		return &updatepb.StatusReply{Status: updatepb.Status_STATUS_RUNNING}, nil
+	}
+	return nil, status.Error(codes.Internal, "unknown status from service")
+}
+
+func (s *Server) Update(ctx context.Context, _ *emptypb.Empty) (*emptypb.Empty, error) {
+	if err := s.service.Update(ctx); err != nil {
+		if errors.Is(err, core.ErrAlreadyExists) {
+			return nil, status.Error(codes.AlreadyExists, "update already runs")
+		}
+		return nil, err
+	}
+	return nil, nil
+}
+
+func (s *Server) Stats(ctx context.Context, _ *emptypb.Empty) (*updatepb.StatsReply, error) {
+	stats, err := s.service.Stats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &updatepb.StatsReply{
+		WordsTotal:    int64(stats.WordsTotal),
+		WordsUnique:   int64(stats.WordsUnique),
+		ComicsTotal:   int64(stats.ComicsTotal),
+		ComicsFetched: int64(stats.ComicsFetched),
+	}, nil
+}
+
+func (s *Server) Drop(ctx context.Context, _ *emptypb.Empty) (*emptypb.Empty, error) {
+	if err := s.service.Drop(ctx); err != nil {
+		return nil, err
+	}
+	return nil, nil
+}
+```
+==================================================
+
+FILE: update/core/errors.go
+--------------------
+```
+package core
+
+import "errors"
+
+var ErrBadArguments = errors.New("arguments are not acceptable")
+var ErrAlreadyExists = errors.New("resource or task already exists")
+var ErrNotFound = errors.New("resource is not found")
+```
+==================================================
+
+FILE: update/core/models.go
+--------------------
+```
+package core
+
+type ServiceStatus string
+
+const (
+	StatusRunning ServiceStatus = "running"
+	StatusIdle    ServiceStatus = "idle"
+)
+
+type DBStats struct {
+	WordsTotal    int
+	WordsUnique   int
+	ComicsFetched int
+}
+
+type ServiceStats struct {
+	DBStats
+	ComicsTotal int
+}
+
+type Comics struct {
+	ID    int
+	URL   string
+	Words []string
+}
+
+type XKCDInfo struct {
+	ID          int
+	URL         string
+	Description string
+}
+```
+==================================================
+
+FILE: update/core/ports.go
+--------------------
+```
+package core
+
+import (
+	"context"
+)
+
+type Updater interface {
+	Update(context.Context) error
+	Stats(context.Context) (ServiceStats, error)
+	Status(context.Context) ServiceStatus
+	Drop(context.Context) error
+}
+
+type DB interface {
+	Add(context.Context, Comics) error
+	Stats(context.Context) (DBStats, error)
+	Drop(context.Context) error
+	IDs(context.Context) ([]int, error)
+}
+
+type XKCD interface {
+	Get(context.Context, int) (XKCDInfo, error)
+	LastID(context.Context) (int, error)
+}
+
+type Words interface {
+	Norm(ctx context.Context, phrase string) ([]string, error)
+}
+
+type Notifier interface {
+	NotifyDbUpdated() error
+	NotifyDbCleaned() error
+}
+```
+==================================================
+
+FILE: update/core/service.go
+--------------------
+```
+package core
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"sync"
+	"sync/atomic"
+	"time"
+)
+
+type Service struct {
+	log         *slog.Logger
+	db          DB
+	xkcd        XKCD
+	words       Words
+	notifier    Notifier
+	concurrency int
+	inProgress  atomic.Bool
+	lock        sync.Mutex
+}
+
+func NewService(
+	log *slog.Logger, db DB, xkcd XKCD, words Words, concurrency int, notifier Notifier,
+) (*Service, error) {
+	if concurrency < 1 {
+		return nil, fmt.Errorf("wrong concurrency specified: %d", concurrency)
+	}
+	return &Service{
+		log:         log,
+		db:          db,
+		xkcd:        xkcd,
+		words:       words,
+		concurrency: concurrency,
+		notifier:    notifier,
+	}, nil
+}
+
+func (s *Service) Update(ctx context.Context) (err error) {
+	if ok := s.lock.TryLock(); !ok {
+		s.log.Error("service already runs update")
+		return ErrAlreadyExists
+	}
+	defer s.lock.Unlock()
+
+	s.inProgress.Store(true)
+	defer s.inProgress.Store(false)
+
+	s.log.Info("update started")
+	defer func(start time.Time) {
+		s.log.Info("update finished", "duration", time.Since(start), "error", err)
+	}(time.Now())
+
+	// get existing IDs in DB
+	IDs, err := s.db.IDs(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get existing IDs in DB: %v", err)
+	}
+	s.log.Debug("existing comics in DB", "count", len(IDs))
+	exists := make(map[int]bool, len(IDs))
+	for _, id := range IDs {
+		exists[id] = true
+	}
+
+	// get last comics ID
+	lastID, err := s.xkcd.LastID(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get last ID in XKCD: %v", err)
+	}
+	s.log.Debug("last comics ID in XKCD", "id", lastID)
+
+	generator := generateIDs(ctx, 1, lastID, exists)
+	fetchers := s.getComics(ctx, generator)
+
+	var errorsFound bool
+	var added int
+	for info := range fetchers {
+		words, err := s.words.Norm(ctx, info.Description)
+		if err != nil {
+			errorsFound = true
+			s.log.Error("failed to normalize", "id", info.ID, "error", err)
+			continue
+		}
+		err = s.db.Add(ctx, Comics{
+			ID:    info.ID,
+			URL:   info.URL,
+			Words: words,
+		})
+		if err != nil {
+			errorsFound = true
+			s.log.Error("failed to save comics", "id", info.ID, "error", err)
+			continue
+		}
+		added++
+	}
+	s.log.Debug("added new comics", "count", added)
+
+	if errorsFound {
+		return fmt.Errorf("failed to fetch/store some comics")
+	}
+
+	// notify about updates all subscribers
+	if err = s.notifier.NotifyDbUpdated(); err != nil {
+		s.log.Warn("could not send db update notification", "error", err)
+	}
+
+	return nil
+}
+
+func generateIDs(ctx context.Context, first, last int, exists map[int]bool) <-chan int {
+	ch := make(chan int)
+	go func() {
+		defer close(ch)
+		for i := first; i <= last; i++ {
+			if exists[i] {
+				continue
+			}
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				ch <- i
+			}
+		}
+	}()
+	return ch
+}
+
+func (s *Service) getComics(ctx context.Context, in <-chan int) <-chan XKCDInfo {
+	out := make(chan XKCDInfo)
+	var wg sync.WaitGroup
+	wg.Add(s.concurrency)
+
+	for i := range s.concurrency {
+		go func() {
+			s.log.Debug("fetcher up", "id", i)
+			defer s.log.Debug("fetcher down", "id", i)
+			defer wg.Done()
+			for id := range in {
+				if id == 404 {
+					// special case
+					out <- XKCDInfo{ID: id, Description: "404 Not found"}
+					continue
+				}
+				info, err := s.xkcd.Get(ctx, id)
+				if err != nil {
+					s.log.Error("failed to get comics", "id", id, "error", err)
+					continue
+				}
+				s.log.Debug("fetched", "id", id)
+				out <- info
+			}
+		}()
+	}
+
+	go func() {
+		wg.Wait()
+		close(out)
+	}()
+	return out
+}
+
+func (s *Service) Stats(ctx context.Context) (ServiceStats, error) {
+	dbStats, err := s.db.Stats(ctx)
+	if err != nil {
+		s.log.Error("failed to get stats", "error", err)
+		return ServiceStats{}, err
+	}
+	lastID, err := s.xkcd.LastID(ctx)
+	if err != nil {
+		s.log.Error("failed to get last comics ID", "error", err)
+		return ServiceStats{}, err
+	}
+	return ServiceStats{
+		DBStats:     dbStats,
+		ComicsTotal: lastID,
+	}, nil
+}
+
+func (s *Service) Status(ctx context.Context) ServiceStatus {
+	if s.inProgress.Load() {
+		return StatusRunning
+	}
+	return StatusIdle
+}
+
+func (s *Service) Drop(ctx context.Context) error {
+	err := s.db.Drop(ctx)
+	if err != nil {
+		s.log.Error("failed to drop db entries", "error", err)
+		return err
+	}
+	// notify about updates all subscribers
+	if err = s.notifier.NotifyDbCleaned(); err != nil {
+		s.log.Warn("could not send db clean notification", "error", err)
+	}
+	return nil
+}
+```
+==================================================
+
+FILE: update/config/config.go
+--------------------
+```
+package config
+
+import (
+	"log"
+	"time"
+
+	"github.com/ilyakaznacheev/cleanenv"
+)
+
+type XKCD struct {
+	URL         string        `yaml:"url" env:"XKCD_URL" env-default:"xkcd.com"`
+	Concurrency int           `yaml:"concurrency" env:"XKCD_CONCURRENCY" env-default:"1"`
+	Timeout     time.Duration `yaml:"timeout" env:"XKCD_TIMEOUT" env-default:"10s"`
+	CheckPeriod time.Duration `yaml:"check_period" env:"XKCD_CHECK_PERIOD" env-default:"1h"`
+}
+
+type Config struct {
+	LogLevel      string `yaml:"log_level" env:"LOG_LEVEL" env-default:"DEBUG"`
+	Address       string `yaml:"update_address" env:"UPDATE_ADDRESS" env-default:"localhost:80"`
+	XKCD          XKCD   `yaml:"xkcd"`
+	DBAddress     string `yaml:"db_address" env:"DB_ADDRESS" env-default:"localhost:82"`
+	WordsAddress  string `yaml:"words_address" env:"WORDS_ADDRESS" env-default:"localhost:81"`
+	BrokerAddress string `yaml:"broker_address" env:"BROKER_ADDRESS" env-default:"localhost:4222"`
+}
+
+func MustLoad(configPath string) Config {
+	var cfg Config
+	if err := cleanenv.ReadConfig(configPath, &cfg); err != nil {
+		log.Fatalf("cannot read config %q: %s", configPath, err)
+	}
+	return cfg
+}
+```
+==================================================
+
+FILE: search/main.go
+--------------------
+```
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"log/slog"
+	"net"
+	"os"
+	"os/signal"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
+	"yadro.com/course/closers"
+	searchpb "yadro.com/course/proto/search"
+	"yadro.com/course/search/adapters/db"
+	"yadro.com/course/search/adapters/events"
+	searchgrpc "yadro.com/course/search/adapters/grpc"
+	"yadro.com/course/search/adapters/initiator"
+	"yadro.com/course/search/adapters/words"
+	"yadro.com/course/search/config"
+	"yadro.com/course/search/core"
+)
+
+func main() {
+
+	// config
+	var configPath string
+	flag.StringVar(&configPath, "config", "config.yaml", "server configuration file")
+	flag.Parse()
+	cfg := config.MustLoad(configPath)
+
+	// logger
+	log := mustMakeLogger(cfg.LogLevel)
+
+	if err := run(cfg, log); err != nil {
+		log.Error("server failed", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run(cfg config.Config, log *slog.Logger) error {
+	log.Info("starting server")
+	log.Debug("debug messages are enabled")
+
+	// context for Ctrl-C
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	// database adapter
+	storage, err := db.New(log, cfg.DBAddress)
+	if err != nil {
+		return fmt.Errorf("failed to connect to db: %v", err)
+	}
+	defer closers.CloseOrLog(storage, log)
+
+	// words adapter
+	words, err := words.NewClient(cfg.WordsAddress, log)
+	if err != nil {
+		return fmt.Errorf("failed create Words client: %v", err)
+	}
+	defer closers.CloseOrLog(words, log)
+
+	// service
+	searcher, err := core.NewService(log, storage, words)
+	if err != nil {
+		return fmt.Errorf("failed create Update service: %v", err)
+	}
+
+	// initiator
+	initiator.RunIndexUpdate(ctx, searcher, cfg.IndexTTL, log)
+
+	// event listener
+	broker, err := events.New(cfg.BrokerAddress, searcher, log)
+	if err != nil {
+		return fmt.Errorf("failed create event listener: %v", err)
+	}
+	defer broker.Close()
+
+	// grpc server
+	listener, err := net.Listen("tcp", cfg.Address)
+	if err != nil {
+		return fmt.Errorf("failed to listen: %v", err)
+	}
+
+	s := grpc.NewServer()
+	searchpb.RegisterSearchServer(s, searchgrpc.NewServer(searcher))
+	reflection.Register(s)
+
+	go func() {
+		<-ctx.Done()
+		log.Debug("shutting down server")
+		s.GracefulStop()
+	}()
+
+	if err := s.Serve(listener); err != nil {
+		return fmt.Errorf("failed to serve: %v", err)
+	}
+
+	return nil
+}
+
+func mustMakeLogger(logLevel string) *slog.Logger {
+	var level slog.Level
+	switch logLevel {
+	case "DEBUG":
+		level = slog.LevelDebug
+	case "INFO":
+		level = slog.LevelInfo
+	case "ERROR":
+		level = slog.LevelError
+	default:
+		panic("unknown log level: " + logLevel)
+	}
+	handler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level, AddSource: true})
+	return slog.New(handler)
+}
+```
+==================================================
+
+FILE: search/adapters/db/storage.go
+--------------------
+```
+package db
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"log/slog"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
+	"yadro.com/course/search/core"
+)
+
+type DB struct {
+	log  *slog.Logger
+	conn *sqlx.DB
+}
+
+func New(log *slog.Logger, address string) (*DB, error) {
+
+	db, err := sqlx.Connect("pgx", address)
+	if err != nil {
+		log.Error("connection problem", "address", address, "error", err)
+		return nil, err
+	}
+
+	return &DB{
+		log:  log,
+		conn: db,
+	}, nil
+}
+
+func (db *DB) Close() error {
+	return db.conn.Close()
+}
+
+func (db *DB) Search(ctx context.Context, keyword string) ([]int, error) {
+	var IDs []int
+	err := db.conn.SelectContext(
+		ctx, &IDs,
+		"SELECT id FROM comics WHERE $1 = ANY(words)",
+		keyword,
+	)
+
+	return IDs, err
+}
+
+type Comics struct {
+	ID       int            `db:"id"`
+	URL      string         `db:"url"`
+	Keywords pq.StringArray `db:"words"`
+}
+
+func (db *DB) Get(ctx context.Context, id int) (core.Comics, error) {
+	var comics Comics
+	err := db.conn.GetContext(
+		ctx, &comics,
+		"SELECT id, url, words FROM comics WHERE id = $1",
+		id,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = core.ErrNotFound
+	}
+
+	return core.Comics{ID: comics.ID, URL: comics.URL, Keywords: comics.Keywords}, err
+}
+
+func (db *DB) LastID(ctx context.Context) (int, error) {
+	var ID int
+	err := db.conn.GetContext(
+		ctx, &ID,
+		"SELECT coalesce(max(id), 0) FROM comics",
+	)
+
+	return ID, err
+}
+```
+==================================================
+
+FILE: search/adapters/events/events.go
+--------------------
+```
+package events
+
+import (
+	"context"
+	"log/slog"
+	"time"
+
+	"github.com/nats-io/nats.go"
+	"yadro.com/course/search/core"
+)
+
+const updateTopic = "xkcd.db.updated"
+const indexUpdateTimeout = 5 * time.Second
+
+type Broker struct {
+	connection   *nats.Conn
+	subscription *nats.Subscription
+	log          *slog.Logger
+}
+
+func New(address string, searcher core.Searcher, log *slog.Logger) (*Broker, error) {
+	nc, err := nats.Connect(address)
+	if err != nil {
+		return nil, err
+	}
+	log.Debug("connected to broker", "address", address)
+
+	sub, err := nc.Subscribe(updateTopic, func(msg *nats.Msg) {
+		ctx, cancel := context.WithTimeout(context.Background(), indexUpdateTimeout)
+		defer cancel()
+		log.Debug("db update event", "message", msg.Data)
+		if err := searcher.BuildIndex(ctx); err != nil {
+			log.Error("index re-build failed", "error", err)
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &Broker{connection: nc, subscription: sub, log: log}, nil
+}
+
+func (b *Broker) Close() {
+	if err := b.subscription.Unsubscribe(); err != nil {
+		b.log.Error("could not unsubscribe", "error", err)
+	}
+	b.connection.Close()
+}
+```
+==================================================
+
+FILE: search/adapters/words/words.go
+--------------------
+```
+package words
+
+import (
+	"context"
+	"log/slog"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
+	wordspb "yadro.com/course/proto/words"
+	"yadro.com/course/search/core"
+)
+
+type Client struct {
+	log    *slog.Logger
+	client wordspb.WordsClient
+	conn   *grpc.ClientConn
+}
+
+func NewClient(address string, log *slog.Logger) (*Client, error) {
+	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, err
+	}
+	return &Client{
+		client: wordspb.NewWordsClient(conn),
+		log:    log,
+		conn:   conn,
+	}, nil
+}
+
+func (c *Client) Close() error {
+	return c.conn.Close()
+}
+
+func (c *Client) Norm(ctx context.Context, phrase string) ([]string, error) {
+	reply, err := c.client.Norm(ctx, &wordspb.WordsRequest{Phrase: phrase})
+	if err != nil {
+		if status.Code(err) == codes.ResourceExhausted {
+			return nil, core.ErrBadArguments
+		}
+		return nil, err
+	}
+	return reply.GetWords(), nil
+}
+
+func (c *Client) Ping(ctx context.Context) error {
+	_, err := c.client.Ping(ctx, nil)
+	return err
+}
+```
+==================================================
+
+FILE: search/adapters/grpc/server.go
+--------------------
+```
+package grpc
+
+import (
+	"context"
+	"errors"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
+	searchpb "yadro.com/course/proto/search"
+	"yadro.com/course/search/core"
+)
+
+const defaultLimit = 10
+
+func NewServer(service core.Searcher) *Server {
+	return &Server{service: service}
+}
+
+type Server struct {
+	searchpb.UnimplementedSearchServer
+	service core.Searcher
+}
+
+func (s *Server) Ping(_ context.Context, _ *emptypb.Empty) (*emptypb.Empty, error) {
+	return nil, nil
+}
+
+func (s *Server) Search(
+	ctx context.Context, req *searchpb.SearchRequest,
+) (*searchpb.SearchReply, error) {
+	if req.Limit == 0 {
+		req.Limit = defaultLimit
+	}
+	results, err := s.service.Search(ctx, req.Phrase, int(req.Limit))
+	if err != nil {
+		if errors.Is(err, core.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "nothing found")
+		}
+		return nil, err
+	}
+	comics := make([]*searchpb.Comics, 0, len(results))
+	for _, c := range results {
+		comics = append(comics, &searchpb.Comics{
+			Id:    int64(c.ID),
+			Url:   c.URL,
+			Score: int64(c.Score),
+		})
+	}
+	return &searchpb.SearchReply{Comics: comics}, nil
+}
+
+func (s *Server) SearchIndex(
+	ctx context.Context, req *searchpb.SearchRequest,
+) (*searchpb.SearchReply, error) {
+	if req.Limit == 0 {
+		req.Limit = defaultLimit
+	}
+	results, err := s.service.SearchIndex(ctx, req.Phrase, int(req.Limit))
+	if err != nil {
+		if errors.Is(err, core.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "nothing found")
+		}
+		return nil, err
+	}
+	comics := make([]*searchpb.Comics, 0, len(results))
+	for _, c := range results {
+		comics = append(comics, &searchpb.Comics{
+			Id:    int64(c.ID),
+			Url:   c.URL,
+			Score: int64(c.Score),
+		})
+	}
+	return &searchpb.SearchReply{Comics: comics}, nil
+}
+```
+==================================================
+
+FILE: search/adapters/initiator/index_updater.go
+--------------------
+```
+package initiator
+
+import (
+	"context"
+	"log/slog"
+	"time"
+
+	"yadro.com/course/search/core"
+)
+
+func RunIndexUpdate(
+	ctx context.Context, searcher core.Searcher, period time.Duration, log *slog.Logger,
+) {
+	go func() {
+		// update on start
+		if err := searcher.BuildIndex(ctx); err != nil {
+			log.Error("failed to build index on start", "error", err)
+		}
+		ticker := time.NewTicker(period)
+		for {
+			select {
+			case <-ctx.Done():
+				log.Error("quit updater")
+			case <-ticker.C:
+				log.Info("run index update")
+				if err := searcher.BuildIndex(ctx); err != nil {
+					log.Error("build index failed", "error", err)
+				}
+			}
+		}
+	}()
+}
+```
+==================================================
+
+FILE: search/core/errors.go
+--------------------
+```
+package core
+
+import "errors"
+
+var ErrBadArguments = errors.New("arguments are not acceptable")
+var ErrAlreadyExists = errors.New("resource or task already exists")
+var ErrNotFound = errors.New("resource is not found")
+```
+==================================================
+
+FILE: search/core/models.go
+--------------------
+```
+package core
+
+import (
+	"slices"
+	"sync"
+)
+
+type Comics struct {
+	ID       int
+	URL      string
+	Keywords []string
+	Score    int
+}
+
+type Index struct {
+	index map[string][]int
+	lock  sync.RWMutex
+}
+
+func NewIndex() *Index {
+	return &Index{
+		index: make(map[string][]int),
+	}
+}
+
+func (i *Index) Clear() {
+	i.lock.Lock()
+	i.index = make(map[string][]int)
+	i.lock.Unlock()
+}
+
+func (i *Index) Put(id int, keywords []string) {
+	i.lock.Lock()
+	for _, keyword := range keywords {
+		i.index[keyword] = append(i.index[keyword], id)
+	}
+	i.lock.Unlock()
+}
+
+func (i *Index) Get(keyword string) []int {
+	i.lock.RLock()
+	defer i.lock.RUnlock()
+	return slices.Clone(i.index[keyword])
+}
+```
+==================================================
+
+FILE: search/core/ports.go
+--------------------
+```
+package core
+
+import (
+	"context"
+)
+
+type Searcher interface {
+	Search(ctx context.Context, phrase string, limit int) ([]Comics, error)
+	SearchIndex(ctx context.Context, phrase string, limit int) ([]Comics, error)
+	BuildIndex(ctx context.Context) error
+}
+
+type DB interface {
+	Search(ctx context.Context, keyword string) ([]int, error)
+	Get(ctx context.Context, ID int) (Comics, error)
+	LastID(ctx context.Context) (int, error)
+}
+
+type Words interface {
+	Norm(ctx context.Context, phrase string) ([]string, error)
+}
+```
+==================================================
+
+FILE: search/core/service.go
+--------------------
+```
+package core
+
+import (
+	"cmp"
+	"context"
+	"errors"
+	"log/slog"
+	"maps"
+	"slices"
+)
+
+type Service struct {
+	log   *slog.Logger
+	db    DB
+	words Words
+	index *Index
+}
+
+func NewService(log *slog.Logger, db DB, words Words) (*Service, error) {
+
+	return &Service{
+		log:   log,
+		db:    db,
+		words: words,
+		index: NewIndex(),
+	}, nil
+}
+
+func (s *Service) Search(ctx context.Context, phrase string, limit int) ([]Comics, error) {
+
+	keywords, err := s.words.Norm(ctx, phrase)
+	if err != nil {
+		s.log.Error("failed to find keywords", "error", err)
+		return nil, err
+	}
+	s.log.Debug("normalized query", "keywords", keywords)
+
+	// comics ID -> number of findings
+	scores := map[int]int{}
+	for _, keyword := range keywords {
+		IDs, err := s.db.Search(ctx, keyword)
+		if err != nil {
+			s.log.Error("failed to search keyword in DB", "error", err)
+			return nil, err
+		}
+		for _, ID := range IDs {
+			scores[ID]++
+		}
+	}
+
+	return s.fetch(ctx, scores, limit)
+}
+
+func (s *Service) SearchIndex(ctx context.Context, phrase string, limit int) ([]Comics, error) {
+
+	keywords, err := s.words.Norm(ctx, phrase)
+	if err != nil {
+		s.log.Error("failed to find keywords", "error", err)
+		return nil, err
+	}
+	s.log.Debug("normalized query", "keywords", keywords)
+
+	// comics ID -> number of findings
+	scores := map[int]int{}
+	for _, keyword := range keywords {
+
+		for _, ID := range s.index.Get(keyword) {
+			scores[ID]++
+		}
+	}
+
+	return s.fetch(ctx, scores, limit)
+}
+
+func (s *Service) fetch(ctx context.Context, scores map[int]int, limit int) ([]Comics, error) {
+	s.log.Debug("relevant comics", "count", len(scores))
+
+	// sort by number of findings
+	sorted := slices.SortedFunc(maps.Keys(scores), func(a, b int) int {
+		return cmp.Compare(scores[b], scores[a]) // desc
+	})
+
+	// limit results
+	if len(sorted) < limit {
+		limit = len(sorted)
+	}
+	sorted = sorted[:limit]
+
+	// fetch comics
+	result := make([]Comics, 0, len(sorted))
+	for _, ID := range sorted {
+		comics, err := s.db.Get(ctx, ID)
+		if err != nil {
+			s.log.Error("failed to fetch comics", "id", ID, "error", err)
+			return nil, err
+		}
+		comics.Score = scores[ID]
+		result = append(result, comics)
+	}
+	s.log.Debug("returning comics", "count", len(result))
+
+	return result, nil
+}
+
+func (s *Service) BuildIndex(ctx context.Context) error {
+
+	s.index.Clear()
+	lastID, err := s.db.LastID(ctx)
+	if err != nil {
+		return err
+	}
+	var comicsCount int
+	for ID := 1; ID <= lastID; ID++ {
+		comics, err := s.db.Get(ctx, ID)
+		if err != nil {
+			if errors.Is(err, ErrNotFound) {
+				continue
+			}
+			s.log.Error("failed to fetch comics", "id", ID, "error", err)
+			return err
+		}
+		s.index.Put(ID, comics.Keywords)
+		comicsCount++
+	}
+
+	s.log.Debug("rebuilt index", "comics count", comicsCount)
+	return nil
+}
+```
+==================================================
+
+FILE: search/config/config.go
+--------------------
+```
+package config
+
+import (
+	"log"
+	"time"
+
+	"github.com/ilyakaznacheev/cleanenv"
+)
+
+type Config struct {
+	LogLevel      string        `yaml:"log_level" env:"LOG_LEVEL" env-default:"DEBUG"`
+	IndexTTL      time.Duration `yaml:"index_ttl" env:"INDEX_TTL" env-default:"1h"`
+	Address       string        `yaml:"search_address" env:"SEARCH_ADDRESS" env-default:"localhost:80"`
+	DBAddress     string        `yaml:"db_address" env:"DB_ADDRESS" env-default:"localhost:82"`
+	WordsAddress  string        `yaml:"words_address" env:"WORDS_ADDRESS" env-default:"localhost:81"`
+	BrokerAddress string        `yaml:"broker_address" env:"BROKER_ADDRESS" env-default:"localhost:4222"`
+}
+
+func MustLoad(configPath string) Config {
+	var cfg Config
+	if err := cleanenv.ReadConfig(configPath, &cfg); err != nil {
+		log.Fatalf("cannot read config %q: %s", configPath, err)
+	}
+	return cfg
+}
+```
+==================================================
+
