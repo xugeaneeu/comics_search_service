@@ -6,7 +6,7 @@ info:
   contact:
     name: API Support
 servers:
-  - url: http://localhost:8080
+  - url: http://localhost:28080
     description: Local server (порт зависит от config.yaml)
 
 # Описание авторизации
@@ -19,7 +19,7 @@ components:
       in: header
       name: Authorization
       description: |
-        Для авторизации используйте формат: `Token <ващ_jwt_токен>`.
+        Для авторизации используйте формат: `Token <ваш_jwt_токен>`.
         Пример: `Token eyJhbGciOiJIUzI1Ni...`
 
   schemas:
