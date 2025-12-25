@@ -1,0 +1,271 @@
+openapi: 3.0.3
+info:
+  title: XKCD Search Engine API
+  description: API для поиска по комиксам XKCD, управления базой данных и статистики.
+  version: 1.0.0
+  contact:
+    name: API Support
+servers:
+  - url: http://localhost:8080
+    description: Local server (порт зависит от config.yaml)
+
+# Описание авторизации
+components:
+  securitySchemes:
+    # В коде middleware/auth.go ожидается формат "Token <jwt>"
+    # Стандартный HTTP Bearer использует слово "Bearer", поэтому здесь используем apiKey
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: |
+        Для авторизации используйте формат: `Token <ващ_jwt_токен>`.
+        Пример: `Token eyJhbGciOiJIUzI1Ni...`
+
+  schemas:
+    # Схемы данных (Structs из api/adapters/rest/api.go)
+    LoginRequest:
+      type: object
+      required:
+        - name
+        - password
+      properties:
+        name:
+          type: string
+          example: "admin"
+        password:
+          type: string
+          format: password
+          example: "secret"
+
+    Comics:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1024
+        url:
+          type: string
+          example: "https://imgs.xkcd.com/comics/error_code.png"
+        score:
+          type: integer
+          description: Количество совпадений ключевых слов
+          example: 5
+
+    ComicsReply:
+      type: object
+      properties:
+        comics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Comics'
+        total:
+          type: integer
+          example: 1
+
+    StatsReply:
+      type: object
+      properties:
+        words_total:
+          type: integer
+          description: Общее количество слов в индексе
+        words_unique:
+          type: integer
+          description: Количество уникальных слов
+        comics_fetched:
+          type: integer
+          description: Количество комиксов в базе
+        comics_total:
+          type: integer
+          description: Последний ID комикса на сайте xkcd.com
+
+    StatusReply:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [idle, running, unknown]
+          description: Текущий статус воркера обновления
+          example: idle
+
+    PingReply:
+      type: object
+      properties:
+        replies:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            words: "ok"
+            update: "ok"
+            search: "unavailable"
+
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+
+# Список эндпоинтов
+paths:
+  /api/login:
+    post:
+      summary: Получение JWT токена
+      description: Аутентификация администратора. Возвращает сырую строку токена.
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешная авторизация. Тело ответа содержит токен.
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "eyJhbGciOiJIUzI1Ni..."
+        '400':
+          description: Некорректные данные запроса
+        '401':
+          description: Неверный логин или пароль
+
+  /api/search:
+    get:
+      summary: Поиск комиксов (DB)
+      description: Поиск комиксов прямым запросом к базе данных. Ограничен параметром concurrency.
+      tags:
+        - Search
+      parameters:
+        - in: query
+          name: phrase
+          schema:
+            type: string
+          required: true
+          description: Поисковая фраза
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 10
+          required: false
+          description: Максимальное количество результатов
+      responses:
+        '200':
+          description: Список найденных комиксов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComicsReply'
+        '400':
+          description: Не задана фраза или неверный лимит
+        '404':
+          description: Комиксы не найдены
+        '503':
+          description: Сервис перегружен (сработал middleware Concurrency)
+
+  /api/isearch:
+    get:
+      summary: Поиск комиксов (Index)
+      description: Быстрый поиск через In-Memory индекс. Ограничен Rate Limiter.
+      tags:
+        - Search
+      parameters:
+        - in: query
+          name: phrase
+          schema:
+            type: string
+          required: true
+          description: Поисковая фраза
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 10
+          required: false
+      responses:
+        '200':
+          description: Список найденных комиксов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComicsReply'
+        '404':
+          description: Комиксы не найдены
+        '503':
+          description: Превышен лимит запросов (Rate Limit)
+
+  /api/db/stats:
+    get:
+      summary: Статистика базы данных
+      tags:
+        - Database
+      responses:
+        '200':
+          description: Статистика по словам и комиксам
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatsReply'
+
+  /api/db/status:
+    get:
+      summary: Статус процесса обновления
+      tags:
+        - Database
+      responses:
+        '200':
+          description: Текущий статус (idle/running)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusReply'
+
+  /api/db/update:
+    post:
+      summary: Запуск обновления БД
+      description: Запускает процесс скачивания новых комиксов с XKCD. Требует прав администратора.
+      tags:
+        - Database
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Обновление успешно запущено (или завершено)
+        '202':
+          description: Обновление уже запущено (Accepted)
+        '401':
+          description: Не авторизован
+
+  /api/db:
+    delete:
+      summary: Очистка базы данных
+      description: Удаляет все данные из таблицы комиксов. Требует прав администратора.
+      tags:
+        - Database
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: База успешно очищена
+        '401':
+          description: Не авторизован
+        '500':
+          description: Внутренняя ошибка сервера
+
+  /api/ping:
+    get:
+      summary: Проверка здоровья сервисов (Healthcheck)
+      description: Проверяет доступность микросервисов (words, update, search).
+      tags:
+        - System
+      responses:
+        '200':
+          description: Статус компонентов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PingReply'
